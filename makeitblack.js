@@ -140,12 +140,12 @@ function MapData(name, onLoad) {
 
 
 // ----------------------------------------------------------------------------
-//                               _             _      
-//   __ _  __ _ _ __ ___   ___  | | ___   __ _(_) ___ 
-//  / _` |/ _` | '_ ` _ \ / _ \ | |/ _ \ / _` | |/ __|
-// | (_| | (_| | | | | | |  __/ | | (_) | (_| | | (__ 
-//  \__, |\__,_|_| |_| |_|\___| |_|\___/ \__, |_|\___|
-//  |___/                                |___/        
+//             _   _ _   _           
+//   ___ _ __ | |_(_) |_(_) ___  ___ 
+//  / _ \ '_ \| __| | __| |/ _ \/ __|
+// |  __/ | | | |_| | |_| |  __/\__ \
+//  \___|_| |_|\__|_|\__|_|\___||___/
+//                                   
 // ----------------------------------------------------------------------------
 function Entity(type, state, initialVals, delegate) {
 	var intf = {};
@@ -186,8 +186,6 @@ function Entity(type, state, initialVals, delegate) {
 		// -- normal movement is handled by the entity, but gravity is applied globally
 		if (! isOnFloor())
 			intf.velY += GRAVITY_SEC * dt;
-
-		log(intf.width, intf.height);
 
 		// -- move and collide HORIZONTAL
 		if (tryX != intf.locX) {
@@ -261,6 +259,10 @@ function Entity(type, state, initialVals, delegate) {
 		move(dt);
 	}
 
+	function tileIndex() {
+		return delegate.tileIndex(intf);
+	}
+
 	extend(extend(intf, {
 		type: type,
 		locX: 0, locY: 0,
@@ -268,6 +270,7 @@ function Entity(type, state, initialVals, delegate) {
 		width: 1, height: 1,
 
 		act: act,
+		tileIndex: tileIndex,
 		isOnFloor: isOnFloor
 	}), initialVals);
 
@@ -275,6 +278,7 @@ function Entity(type, state, initialVals, delegate) {
 
 	return intf;
 }
+
 
 function PlayerEntity(state, initialVals) {
 	var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39;
@@ -286,6 +290,10 @@ function PlayerEntity(state, initialVals) {
 		init: function(me) {
 			me.width = 1;
 			me.height = 2;
+		},
+
+		tileIndex: function(me) {
+			return 55;
 		},
 
 		act: function(me) {
@@ -311,6 +319,16 @@ function PlayerEntity(state, initialVals) {
 	});
 }
 
+
+
+// ----------------------------------------------------------------------------
+//                               _             _      
+//   __ _  __ _ _ __ ___   ___  | | ___   __ _(_) ___ 
+//  / _` |/ _` | '_ ` _ \ / _ \ | |/ _ \ / _` | |/ __|
+// | (_| | (_| | | | | | |  __/ | | (_) | (_| | | (__ 
+//  \__, |\__,_|_| |_| |_|\___| |_|\___/ \__, |_|\___|
+//  |___/                                |___/        
+// ----------------------------------------------------------------------------
 var Game = (function() {
 	var state, player;
 
@@ -368,10 +386,13 @@ var View = (function() {
 	var VIEW_SCALE = 3;
 
 	var ctx, state, tiles, off,
-		tempCanvas, tempCtx;
+		tempCanvas, tempCtx,
+		sunGradient;
 
 	function drawBG() {
 		ctx.fillStyle = "#439bf8";
+		ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+		ctx.fillStyle = sunGradient;
 		ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 
 		for (var y = 0; y < STAGE_H/8; ++y) {
@@ -381,7 +402,7 @@ var View = (function() {
 			for (var x = 0; x < tilexes.length; ++x) {
 				var tilex = tilexes[x] - 1;
 				if (tilex >= 0)
-					ctx.drawImage(tiles, tilex * 8, 0, 8, 8,  (x * 8) - (state.cameraX & (TILE_DIM - 1)), y * 8, 8, 8);
+					ctx.drawImage(tiles, (tilex & 7) * 8, tilex & 0xf8, 8, 8,  (x * 8) - (state.cameraX & (TILE_DIM - 1)), y * 8, 8, 8);
 			}
 		}
 	}
@@ -390,9 +411,10 @@ var View = (function() {
 		for (var x=0; x < state.entities.length; ++x) {
 			var ent = state.entities[x],
 				pixWidth = ent.width * TILE_DIM,
-				pixHeight = ent.height * TILE_DIM;
+				pixHeight = ent.height * TILE_DIM,
+				tilex = ent.tileIndex();
 
-			ctx.drawImage(tiles, 56, 48, pixWidth, pixHeight, Math.round(ent.locX - state.cameraX), Math.round(ent.locY) - pixHeight + 1, pixWidth, pixHeight);
+			ctx.drawImage(tiles, (tilex & 7) * 8, tilex & 0xf8, pixWidth, pixHeight, Math.round(ent.locX - state.cameraX), Math.round(ent.locY) - pixHeight + 1, pixWidth, pixHeight);
 		}
 	}
 
@@ -434,6 +456,10 @@ var View = (function() {
 		ctx = newCtx;
 		ctx.webkitImageSmoothingEnabled = false;
 		ctx.scale(VIEW_SCALE, VIEW_SCALE);
+
+		sunGradient = ctx.createLinearGradient(STAGE_W, 0, STAGE_W / 2, 0);
+		sunGradient.addColorStop(0.0, "#fff690");
+		sunGradient.addColorStop(1.0, "#439bf8");
 
 		off = ctx.createImageData(STAGE_W, STAGE_H);
 		for (var i=0; i < STAGE_W * STAGE_H; ++i)
