@@ -54,7 +54,9 @@ function extend(source, additions) {
 //  |___/                           
 // ----------------------------------------------------------------------------
 var STAGE_W = 320, STAGE_H = 192,
-	TILE_DIM = 8;
+	TILE_DIM = 8,
+	GRAVITY_SEC = 180;
+
 
 
 // ----------------------------------------------------------------------------
@@ -145,140 +147,183 @@ function MapData(name, onLoad) {
 //  \__, |\__,_|_| |_| |_|\___| |_|\___/ \__, |_|\___|
 //  |___/                                |___/        
 // ----------------------------------------------------------------------------
-var Game = (function() {
-	var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39;
+function Entity(type, state, initialVals, delegate) {
+	var intf = {};
 
-	var PLAYER_SPEED_SEC = 40,
-		PLAYER_JUMP_SPEED_SEC = 85,
-		GRAVITY_SEC = 180;
-
-	var state;
-
-	function movePlayer(dt) {
-		var playerRow = Math.floor(state.playerFeetY / TILE_DIM),
-			playerCol = Math.floor((state.playerX + 1) / TILE_DIM),
-			playerTileVOffset = Math.round(state.playerFeetY) & (TILE_DIM - 1),
-			playerTileHOffset = Math.round(state.playerX) & (TILE_DIM - 1),
-			playerOnFloor = false;
+	function isOnFloor() {
+		var locRow = Math.floor(intf.locY / TILE_DIM),
+			locCol = Math.floor((intf.locX + 1) / TILE_DIM),
+			tileVOffset = Math.round(intf.locY) & (TILE_DIM - 1),
+			tileHOffset = Math.round(intf.locX) & (TILE_DIM - 1),
+			onFloor = false;
 
 		// -- rather critical test
-		if((playerTileVOffset == TILE_DIM - 1) && state.playerVY >= 0) {
-			if (state.map.layers[0].tileAt(playerRow + 1, playerCol))
-				playerOnFloor = true;
-			if ((playerTileHOffset > 0) && state.map.layers[0].tileAt(playerRow + 1, playerCol + 1))
-				playerOnFloor = true;
+		if((tileVOffset == TILE_DIM - 1) && intf.velY >= 0) {
+			if (state.map.layers[0].tileAt(locRow + 1, locCol))
+				onFloor = true;
+			if ((tileHOffset > 0) && state.map.layers[0].tileAt(locRow + 1, locCol + 1))
+				onFloor = true;
 		}
-		state.playerOnFloor = playerOnFloor;
 
-		// -- horizontal movement, non-accelerated
-		if (state.keys[KEY_LEFT])
-			state.playerVX = -PLAYER_SPEED_SEC;
-		else if (state.keys[KEY_RIGHT])
-			state.playerVX = +PLAYER_SPEED_SEC;
-		else state.playerVX = 0;
+		return onFloor;
+	}
 
-		// -- vertical movement, jumps & falls, accelerated
-		if (playerOnFloor) {
-			state.playerVY = 0;
-			if (state.keys[KEY_UP])
-				state.playerVY = -PLAYER_JUMP_SPEED_SEC;
-		}
-		else
-			state.playerVY += GRAVITY_SEC * dt;
+	function move(dt) {
+		var backLayer = state.map.layers[0],
+			locRow = Math.floor(intf.locY / TILE_DIM),
+			locCol = Math.floor((intf.locX + 1) / TILE_DIM),
+			tileVOffset = Math.round(intf.locY) & (TILE_DIM - 1),
+			tileHOffset = Math.round(intf.locX) & (TILE_DIM - 1);
 
-		var tryX = state.playerX + (state.playerVX * dt),
-			tryY = state.playerFeetY + (state.playerVY * dt),
+		var tryX = intf.locX + (intf.velX * dt),
+			tryY = intf.locY + (intf.velY * dt),
 			testX = Math.round(tryX),
 			testY = Math.round(tryY),
 			dirX, dirY, tileA, tileB, testCol, testRow;
 
-		if (state.keys[KEY_DOWN])
-			log("move from", state.playerX, state.playerFeetY, "to", tryX, tryY, "speed", state.playerVX, state.playerVY);
+		// -- these collision checks should be handled as a vector, not per component, but I can't be arsed for LD
 
-		// -- these collission checks should be handled as a vector, not per component, but I can't be arsed for LD
-		state.playerColl = false;
-		state.tRow = null; state.tCol = null;
+		// -- normal movement is handled by the entity, but gravity is applied globally
+		if (! isOnFloor())
+			intf.velY += GRAVITY_SEC * dt;
 
 		// -- move and collide HORIZONTAL
-		if (tryX != state.playerX) {
-			dirX = tryX > state.playerX ? 1 : -1;
+		if (tryX != intf.locX) {
+			dirX = tryX > intf.locX ? 1 : -1;
 
 			if (dirX < 0) {
 				testCol = Math.floor((testX - 0) / TILE_DIM);
-				tileA = state.map.layers[0].tileAt(playerRow, testCol);
-				tileB = state.map.layers[0].tileAt(playerRow - 1, testCol);
+				tileA = backLayer.tileAt(locRow, testCol);
+				tileB = backLayer.tileAt(locRow - 1, testCol);
 
 				if (tileA || tileB) {
 					tryX = ((testCol + 1) * TILE_DIM);
-					state.playerVX = 0;
-					state.playerColl = true;
+					delegate.collidedWithWall(intf);
+					intf.velX = 0;
 				}
 			}
 			else {
 				testCol = Math.floor((testX + 8) / TILE_DIM);
-				tileA = state.map.layers[0].tileAt(playerRow, testCol);
-				tileB = state.map.layers[0].tileAt(playerRow - 1, testCol);
-
-				state.tRow = playerRow; state.tCol = testCol;
+				tileA = backLayer.tileAt(locRow, testCol);
+				tileB = backLayer.tileAt(locRow - 1, testCol);
 
 				if (tileA || tileB) {
 					tryX = ((testCol - 1) * TILE_DIM);
-					state.playerVX = 0;
-					state.playerColl = true;
+					delegate.collidedWithWall(intf);
+					intf.velX = 0;
 				}
 			}
 
-			// -- update state
-			state.playerX = tryX;
+			// -- update speed
+			intf.locX = tryX;
 			testX = Math.round(tryX);
-			playerCol = Math.floor((tryX + 1) / TILE_DIM);
+			locCol = Math.floor((tryX + 1) / TILE_DIM);
 		}
 
 		// -- move and collide VERTICAL
-		if (tryY != state.playerFeetY) {
-			dirY = tryY > state.playerFeetY ? 1 : -1;
+		if (tryY != intf.locY) {
+			dirY = tryY > intf.locY ? 1 : -1;
 
 			if (dirY < 0) {
 				testRow = Math.floor((testY - 16) / TILE_DIM);
-				tileA = state.map.layers[0].tileAt(testRow, playerCol);
-				tileB = state.map.layers[0].tileAt(testRow, playerCol + 1);
+				tileA = backLayer.tileAt(testRow, locCol);
+				tileB = backLayer.tileAt(testRow, locCol + 1);
 
-				if (tileA || ((playerTileHOffset > 0) && tileB)) {
+				if (tileA || ((tileHOffset > 0) && tileB)) {
 					tryY = ((testRow + 3) * TILE_DIM) - 1;
-					state.playerVY = 0;
-					state.playerColl = true;
+					delegate.collidedWithCeiling(intf);
+					intf.velY = 0;
 				}
 		 	}
 		 	else {
 				testRow = Math.floor(testY / TILE_DIM);
-				tileA = state.map.layers[0].tileAt(testRow, playerCol);
-				tileB = tileA;// state.map.layers[0].tileAt(testRow, playerCol + 1);
+				tileA = backLayer.tileAt(testRow, locCol);
+				tileB = backLayer.tileAt(testRow, locCol + 1);
 
-				if (tileA || ((playerTileHOffset > 0) && tileB)) {
+				if (tileA || ((tileHOffset > 0) && tileB)) {
 					tryY = (testRow * TILE_DIM) - 1;
-					state.playerVY = 0;
-					state.playerColl = true;
+					delegate.collidedWithFloor(intf);
+					intf.velY = 0;
 				}
 			}
 
 			// -- update state
-			state.playerFeetY = tryY;
+			intf.locY = tryY;
 			testY = Math.round(tryY);
-			playerRow = Math.floor(tryY / TILE_DIM);
+			locRow = Math.floor(tryY / TILE_DIM);
 		}
 	}
 
+	function act(dt) {
+		delegate.act(intf);
+		move(dt);
+	}
+
+	extend(extend(intf, {
+		type: type,
+		locX: 0, locY: 0,
+		velX: 0, velY: 0,
+		width: 1, height: 1,
+
+		act: act,
+		isOnFloor: isOnFloor
+	}), initialVals);
+
+	delegate.init(intf);
+
+	return intf;
+}
+
+function PlayerEntity(state, initialVals) {
+	var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39;
+
+	var PLAYER_SPEED_SEC = 40,
+		PLAYER_JUMP_SPEED_SEC = 85;
+
+	return Entity("player", state, initialVals, {
+		init: function(me) {
+			me.width = 1;
+			me.height = 2;
+		},
+
+		act: function(me) {
+			var onFloor = me.isOnFloor();
+
+			// -- horizontal movement, non-accelerated
+			if (state.keys[KEY_LEFT])
+				me.velX = -PLAYER_SPEED_SEC;
+			else if (state.keys[KEY_RIGHT])
+				me.velX = +PLAYER_SPEED_SEC;
+			else
+				me.velX = 0;
+
+			// -- jump
+			if (onFloor && state.keys[KEY_UP])
+				me.velY = -PLAYER_JUMP_SPEED_SEC;
+		},
+
+		collidedWithWall: function(me) { },
+		collidedWithCeiling: function(me) { },
+		collidedWithFloor: function(me) { },
+		collidedWithEntity: function(me, other) { }
+	});
+}
+
+var Game = (function() {
+	var state, player;
+
 	function moveCamera() {
-		if ((state.playerX - state.cameraX) > STAGE_W / 2) {
-			state.cameraX = Math.min((state.map.width * TILE_DIM) - STAGE_W, state.playerX - (STAGE_W / 2));
+		if ((player.locX - state.cameraX) > STAGE_W / 2) {
+			state.cameraX = Math.min((state.map.width * TILE_DIM) - STAGE_W, player.locX - (STAGE_W / 2));
 		}
-		if ((state.playerX - state.cameraX) < STAGE_W / 2) {
-			state.cameraX = Math.max(0, state.playerX - (STAGE_W / 2));
+		if ((player.locX - state.cameraX) < STAGE_W / 2) {
+			state.cameraX = Math.max(0, player.locX - (STAGE_W / 2));
 		}
 	}
 
 	function step(dt) {
-		movePlayer(dt);
+		for (var x=0; x<state.entities.length; ++x)
+			state.entities[x].act(dt);
 		moveCamera();
 	}
 
@@ -288,9 +333,11 @@ var Game = (function() {
 	function init(theState, done) {
 		state = theState;
 
-		state.playerX = 97; state.playerFeetY = 135;
-		state.playerVX = 0; state.playerVY = 0;
 		state.cameraX = 0;
+
+		state.entities = [];
+		player = PlayerEntity(state, { locX: 97, locY: 135 });
+		state.entities.push(player);
 
 		state.map = MapData("level0");
 		state.map.load(function() {
@@ -338,12 +385,13 @@ var View = (function() {
 	}
 
 	function drawSprites() {
-		ctx.drawImage(tiles, 56, 48, 8, 16, state.playerX - state.cameraX, Math.round(state.playerFeetY) - 15, 8, 16);
+		for (var x=0; x < state.entities.length; ++x) {
+			var ent = state.entities[x],
+				pixWidth = ent.width = TILE_DIM,
+				pixHeight = ent.height * TILE_DIM;
 
-		// if (state.tRow) {
-		// 	ctx.fillStyle = "blue";
-		// 	ctx.fillRect(state.tCol * TILE_DIM, state.tRow * TILE_DIM, TILE_DIM, TILE_DIM);
-		// }
+			ctx.drawImage(tiles, 56, 48, pixWidth, pixHeight, Math.round(ent.locX - state.cameraX), Math.round(ent.locY) - pixHeight + 1, pixWidth, pixHeight);
+		}
 	}
 
 	function render() {
