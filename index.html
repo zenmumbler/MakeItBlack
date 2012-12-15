@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Ludum Dare 25</title>
+	<script src="makeitblack.js"></script>
+	<style>
+		body { background: black; color: #aaa; }
+		.app { width: 960px; margin: 100px auto 0 auto; }
+		.infoblk { margin-top: 100px; text-align: center; }
+		a { color: #811; }
+	</style>
+	<script>
+		window.onload = function() { MakeItBlack.init(document.getElementById("view").getContext("2d")); };
+	</script>
+</head>
+<body>
+	<div class="app">
+		<canvas width="960" height="576" id="view">No Canvas, No Cookie</canvas>
+		<div class="infoblk">
+			<p>Make It Black &mdash; a Ludum Dare 25 Entry by <a href="http://twitter.com/zenmumbler">@zenmumbler</a></p>
+		</div>
+	</div>
+</body>
+</html>

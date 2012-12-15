@@ -1,0 +1,14 @@
+Corruption
+
+- 2d side
+- walk around in happy clappy world
+- can temporarily? corrupt part of it
+	- allows passage?
+	- no longer hurts?
+	- activates things?
+
+core game mechanic
+
+	- platform puzzles?
+	- dark/light problems?
+	
