@@ -55,7 +55,7 @@ function extend(source, additions) {
 // ----------------------------------------------------------------------------
 var STAGE_W = 320, STAGE_H = 192,
 	TILE_DIM = 8,
-	GRAVITY_SEC = 180;
+	GRAVITY_SEC = 300;
 
 
 
@@ -283,8 +283,8 @@ function Entity(type, state, initialVals, delegate) {
 function PlayerEntity(state, initialVals) {
 	var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39;
 
-	var PLAYER_SPEED_SEC = 40,
-		PLAYER_JUMP_SPEED_SEC = 85;
+	var PLAYER_SPEED_SEC = 60,
+		PLAYER_JUMP_SPEED_SEC = 100;
 
 	return Entity("player", state, initialVals, {
 		init: function(me) {
@@ -447,7 +447,7 @@ var View = (function() {
 
 		image.width = 64;
 		image.height = 64;
-		image.src = "tiles.png";
+		image.src = "tiles.png?x=" + Date.now();
 	}
 
 	function init(theState, newCtx, done) {
