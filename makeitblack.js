@@ -187,6 +187,8 @@ function Entity(type, state, initialVals, delegate) {
 		if (! isOnFloor())
 			intf.velY += GRAVITY_SEC * dt;
 
+		log(intf.width, intf.height);
+
 		// -- move and collide HORIZONTAL
 		if (tryX != intf.locX) {
 			dirX = tryX > intf.locX ? 1 : -1;
@@ -194,7 +196,7 @@ function Entity(type, state, initialVals, delegate) {
 			if (dirX < 0) {
 				testCol = Math.floor((testX - 0) / TILE_DIM);
 				tileA = backLayer.tileAt(locRow, testCol);
-				tileB = backLayer.tileAt(locRow - 1, testCol);
+				tileB = backLayer.tileAt(locRow - intf.height + 1, testCol);
 
 				if (tileA || tileB) {
 					tryX = ((testCol + 1) * TILE_DIM);
@@ -203,12 +205,12 @@ function Entity(type, state, initialVals, delegate) {
 				}
 			}
 			else {
-				testCol = Math.floor((testX + 8) / TILE_DIM);
+				testCol = Math.floor((testX + (intf.width * TILE_DIM)) / TILE_DIM);
 				tileA = backLayer.tileAt(locRow, testCol);
-				tileB = backLayer.tileAt(locRow - 1, testCol);
+				tileB = backLayer.tileAt(locRow - intf.height + 1, testCol);
 
 				if (tileA || tileB) {
-					tryX = ((testCol - 1) * TILE_DIM);
+					tryX = ((testCol - intf.width) * TILE_DIM);
 					delegate.collidedWithWall(intf);
 					intf.velX = 0;
 				}
@@ -225,12 +227,12 @@ function Entity(type, state, initialVals, delegate) {
 			dirY = tryY > intf.locY ? 1 : -1;
 
 			if (dirY < 0) {
-				testRow = Math.floor((testY - 16) / TILE_DIM);
+				testRow = Math.floor((testY - (intf.height * TILE_DIM)) / TILE_DIM);
 				tileA = backLayer.tileAt(testRow, locCol);
-				tileB = backLayer.tileAt(testRow, locCol + 1);
+				tileB = backLayer.tileAt(testRow, locCol + intf.width);
 
-				if (tileA || ((tileHOffset > 0) && tileB)) {
-					tryY = ((testRow + 3) * TILE_DIM) - 1;
+				if (tileA || (((tileHOffset > 0) || (intf.width > 1)) && tileB)) {
+					tryY = ((testRow + intf.height + 1) * TILE_DIM) - 1;
 					delegate.collidedWithCeiling(intf);
 					intf.velY = 0;
 				}
@@ -238,9 +240,9 @@ function Entity(type, state, initialVals, delegate) {
 		 	else {
 				testRow = Math.floor(testY / TILE_DIM);
 				tileA = backLayer.tileAt(testRow, locCol);
-				tileB = backLayer.tileAt(testRow, locCol + 1);
+				tileB = backLayer.tileAt(testRow, locCol + intf.width);
 
-				if (tileA || ((tileHOffset > 0) && tileB)) {
+				if (tileA || (((tileHOffset > 0) || (intf.width > 1)) && tileB)) {
 					tryY = (testRow * TILE_DIM) - 1;
 					delegate.collidedWithFloor(intf);
 					intf.velY = 0;
@@ -387,7 +389,7 @@ var View = (function() {
 	function drawSprites() {
 		for (var x=0; x < state.entities.length; ++x) {
 			var ent = state.entities[x],
-				pixWidth = ent.width = TILE_DIM,
+				pixWidth = ent.width * TILE_DIM,
 				pixHeight = ent.height * TILE_DIM;
 
 			ctx.drawImage(tiles, 56, 48, pixWidth, pixHeight, Math.round(ent.locX - state.cameraX), Math.round(ent.locY) - pixHeight + 1, pixWidth, pixHeight);
