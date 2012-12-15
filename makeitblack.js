@@ -268,6 +268,7 @@ function Entity(type, state, initialVals, delegate) {
 		locX: 0, locY: 0,
 		velX: 0, velY: 0,
 		width: 1, height: 1,
+		lookLeft: false,
 
 		act: act,
 		tileIndex: tileIndex,
@@ -277,6 +278,62 @@ function Entity(type, state, initialVals, delegate) {
 	delegate.init(intf);
 
 	return intf;
+}
+
+
+function FuzzleEntity(state, initialVals) {
+	var FUZZLE_SPEED_SEC = 15,
+		FUZZLE_JUMP_SPEED_SEC = 85,
+		FUZZLE_ENGAGE = 1,
+		FUZZLE_IDLE = 2;
+
+	return Entity("fuzzle", state, initialVals, {
+		init: function(me) {
+			me.width = 2;
+			me.height = 2;
+			me.action = FUZZLE_IDLE;
+			me.nextAction = 0;
+			me.movementBlocked = false;
+		},
+
+		tileIndex: function(me) {
+			return [38, 36];
+		},
+
+		act: function(me) {
+			var onFloor = me.isOnFloor(),
+				blocked = false;
+
+			if (me.nextAction <= Date.now()) {
+				if (Math.random() > 0.6)
+					me.action = FUZZLE_ENGAGE;
+				else
+					me.action = FUZZLE_IDLE;
+				me.nextAction = Date.now() + 750 + (Math.random() * 3000);
+			}
+
+			if (me.action == FUZZLE_ENGAGE) {
+				if (state.player.locX < me.locX) {
+					me.velX = -FUZZLE_SPEED_SEC;
+					me.lookLeft = true;
+				}
+				else {
+					me.velX = FUZZLE_SPEED_SEC;
+					me.lookLeft = false;
+				}
+
+				if (onFloor && me.movementBlocked) {
+					me.movementBlocked = false;
+					me.velY = -FUZZLE_JUMP_SPEED_SEC;
+				}
+			}
+		},
+
+		collidedWithWall: function(me) { me.movementBlocked = true; },
+		collidedWithCeiling: function(me) { },
+		collidedWithFloor: function(me) { },
+		collidedWithEntity: function(me, other) { }
+	});
 }
 
 
@@ -293,17 +350,34 @@ function PlayerEntity(state, initialVals) {
 		},
 
 		tileIndex: function(me) {
-			return 55;
+			if (me.lookLeft) {
+				if (me.velY < 0)
+					return 50;
+				if (me.velX)
+					return [54, 52];
+				return 54;
+			}
+			else {
+				if (me.velY < 0)
+					return 51;
+				if (me.velX)
+					return [55, 53];
+				return 55;
+			}
 		},
 
 		act: function(me) {
 			var onFloor = me.isOnFloor();
 
 			// -- horizontal movement, non-accelerated
-			if (state.keys[KEY_LEFT])
+			if (state.keys[KEY_LEFT]) {
 				me.velX = -PLAYER_SPEED_SEC;
-			else if (state.keys[KEY_RIGHT])
+				me.lookLeft = true;
+			}
+			else if (state.keys[KEY_RIGHT]) {
 				me.velX = +PLAYER_SPEED_SEC;
+				me.lookLeft = false;
+			}
 			else
 				me.velX = 0;
 
@@ -358,6 +432,10 @@ var Game = (function() {
 		state.entities = [];
 		player = PlayerEntity(state, { locX: 97, locY: 135 });
 		state.entities.push(player);
+		state.player = player;
+
+		state.entities.push(FuzzleEntity(state, { locX: 20, locY: 100 }));
+		state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
 
 		state.map = MapData("level0");
 		state.map.load(function() {
@@ -386,6 +464,7 @@ var View = (function() {
 	var VIEW_SCALE = 3;
 
 	var ctx, state, tiles, off,
+		frameCtr,
 		tempCanvas, tempCtx,
 		sunGradient;
 
@@ -414,11 +493,16 @@ var View = (function() {
 				pixHeight = ent.height * TILE_DIM,
 				tilex = ent.tileIndex();
 
+			if (tilex.length) {
+				tilex = tilex[Math.floor(frameCtr / (60 / tilex.length)) % tilex.length];
+			}
+
 			ctx.drawImage(tiles, (tilex & 7) * 8, tilex & 0xf8, pixWidth, pixHeight, Math.round(ent.locX - state.cameraX), Math.round(ent.locY) - pixHeight + 1, pixWidth, pixHeight);
 		}
 	}
 
 	function render() {
+		++frameCtr;
 		drawBG();
 		drawSprites();
 
@@ -456,6 +540,8 @@ var View = (function() {
 		ctx = newCtx;
 		ctx.webkitImageSmoothingEnabled = false;
 		ctx.scale(VIEW_SCALE, VIEW_SCALE);
+
+		frameCtr = 0;
 
 		sunGradient = ctx.createLinearGradient(STAGE_W, 0, STAGE_W / 2, 0);
 		sunGradient.addColorStop(0.0, "#fff690");
