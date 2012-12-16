@@ -72,6 +72,19 @@ var STAGE_W = 320, STAGE_H = 192,
 	TILE_DIM = 8,
 	GRAVITY_SEC = 300;
 
+// state actions
+var LEVEL_LOADNEXT = "loadnext",
+	LEVEL_LOADING = "loading",
+	LEVEL_START = "start",
+	LEVEL_FADEIN = "fadein",
+	LEVEL_PLAY = "play",
+	LEVEL_MESSAGE = "modalmessage",
+	LEVEL_END = "end",
+	LEVEL_FADEOUT = "fadeout";
+
+var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39,
+	KEY_SPACE = 32, KEY_RETURN = 13;
+
 
 
 // ----------------------------------------------------------------------------
@@ -592,8 +605,6 @@ function DarknessBlob(state, initialVals) {
 
 
 function PlayerEntity(state, initialVals) {
-	var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39, KEY_SPACE = 32;
-
 	var PLAYER_SPEED_SEC = 60,
 		PLAYER_JUMP_SPEED_SEC = 100,
 		PLAYER_HIT_SPEED_BOOST = 1000;
@@ -684,7 +695,7 @@ function PlayerEntity(state, initialVals) {
 			if (me.invulnerableUntil > state.t0)
 				return;
 
-			if (other.enemy) {
+			if (other.enemy && !other.dead) {
 				var damage = { heart: 16, fuzzle: 8 }[other.type] || 8;
 
 				state.disgust = Math.min(100, state.disgust + damage); // <-- put in state / Game
@@ -701,103 +712,6 @@ function PlayerEntity(state, initialVals) {
 }
 
 
-
-// ----------------------------------------------------------------------------
-//                               _             _      
-//   __ _  __ _ _ __ ___   ___  | | ___   __ _(_) ___ 
-//  / _` |/ _` | '_ ` _ \ / _ \ | |/ _ \ / _` | |/ __|
-// | (_| | (_| | | | | | |  __/ | | (_) | (_| | | (__ 
-//  \__, |\__,_|_| |_| |_|\___| |_|\___/ \__, |_|\___|
-//  |___/                                |___/        
-// ----------------------------------------------------------------------------
-var Game = (function() {
-	var state;
-
-	function moveCamera() {
-		if ((state.player.locX - state.cameraX) > STAGE_W / 2) {
-			state.cameraX = Math.min((state.map.width * TILE_DIM) - STAGE_W, state.player.locX - (STAGE_W / 2));
-		}
-		if ((state.player.locX - state.cameraX) < STAGE_W / 2) {
-			state.cameraX = Math.max(0, state.player.locX - (STAGE_W / 2));
-		}
-	}
-
-	function step(dt) {
-		// -- completion
-		state.completion = Math.min(1.0, (state.tarnishedTiles / state.exposedTiles) / 0.85); // need to cover 85% of exposed tiles to complete level
-
-		// -- filter out entities that want to be removed
-		state.entities = state.entities.filter(function(ent) {
-			return !ent.removeMe;
-		});
-
-		for (var x=0; x<state.entities.length; ++x)
-			state.entities[x].act(dt);
-
-		moveCamera();
-	}
-
-	function keyChange(keyCode, pressed) {
-	}
-
-	function loadLevel(index, done) {
-		state.entities = [];
-
-		state.map = MapData("level" + index);
-		state.map.load(function() {
-			state.exposedTiles = state.map.layers[0].countExposedTiles();
-			state.tarnishedTiles = 0;
-			state.completion = 0;
-
-			// perishables and hearts
-			state.map.layers[1].eachTile(function(row, col, tilex) {
-				var per;
-				if (tilex == 9) { // heart
-					--state.exposedTiles; // can't corrupt floor under the hearts
-					per = HeartEntity(state, {
-						locX: col * TILE_DIM,
-						locY: ((row + 1) * TILE_DIM) - 1,
-					});
-				}
-				else {
-					per = BackgroundEntity(state, {
-						locX: col * TILE_DIM,
-						locY: ((row + 1) * TILE_DIM) - 1,
-						tilex: tilex - 1
-					});
-				}
-				state.entities.push(per);
-			});
-
-			// enemies
-			state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
-			state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
-
-			// player
-			state.player = PlayerEntity(state, { locX: 20, locY: 10 });
-			state.entities.push(state.player);
-
-			done();
-		});
-	}
-
-	function init(theState, done) {
-		state = theState;
-		state.levelIndex = 1;
-
-		loadLevel(state.levelIndex, function() {
-			state.bile = 100;
-			state.disgust = 0;
-
-			done();
-		});
-
-	}
-
-	return { init: init, step: step, keyChange: keyChange };
-}());
-
-
 // ----------------------------------------------------------------------------
 //                     _           _             
 //  _ __ ___ _ __   __| | ___ _ __(_)_ __   __ _ 
@@ -806,16 +720,95 @@ var Game = (function() {
 // |_|  \___|_| |_|\__,_|\___|_|  |_|_| |_|\__, |
 //                                         |___/ 
 // ----------------------------------------------------------------------------
+function Cloud(state, ctx, locX) {
+	var segCount = 9 + Math.round(Math.random() * 7),
+		segs = [],
+		locY = 16 + (Math.random() * 24),
+		period = 3000 + Math.round(Math.random() * 4000),
+		rScaleMax = 0.1;
+
+	for (var k=0; k<segCount; ++k) {
+		segs.push({
+			cx: locX - 15 + (Math.random() * 30),
+			cy: locY -  6 + (Math.random() * 12),
+			r: 5 + (Math.random() * 5),
+			alpha: 0.15 + (Math.random() * 0.08)
+		});
+	}
+
+	function draw(alphaScale) {
+		var tau = 2 * Math.PI,  // happy now, @notch?
+			cycle = tau * ((state.t0 % period) / period),
+			rScale = 1 + (rScaleMax * Math.sin(cycle)),
+			seg;
+
+		ctx.fillStyle = "white";
+		for (var k=0; k<segCount; ++k) {
+			seg = segs[k];
+			ctx.globalAlpha = seg.alpha * alphaScale;
+			ctx.beginPath();
+			ctx.arc(seg.cx - state.cameraX, seg.cy, seg.r * rScale, 0, tau, false);
+			ctx.closePath();
+			ctx.fill();
+		}
+	}
+
+	return { draw: draw };
+}
+
+
 var View = (function() {
 	var VIEW_SCALE = 3;
 
-	var ctx, state, tiles;
+	var ctx, state, tiles, clouds, stars;
 
 	function colerp(from, to, ratio) {
 		var r = from[0], g = from[1], b = from[2],
 			R = to[0], G = to[1], B = to[2],
 			dr = R - r, dg = G - g, db = B - b;
 		return [r + (ratio * dr), g + (ratio * dg), b + (ratio * db)].map(function(v) { return Math.round(v); }).join(",");
+	}
+
+	function buildClouds() {
+		var x = -10;
+
+		clouds = [];
+		while(x < (state.map.width * TILE_DIM) + 10) {
+			clouds.push(Cloud(state, ctx, x));
+			x += 15 + (Math.random() * 40);
+		}
+	}
+
+	function drawClouds() {
+		each(clouds, function(cloud) { cloud.draw(1.0); });
+		ctx.globalAlpha = 1.0;
+	}
+
+	function drawTextBox(title, message) {
+		var gradient = ctx.createLinearGradient(0, 0, 0, 100);
+		gradient.addColorStop(0.0, "black");
+		gradient.addColorStop(1.0, "#333");
+
+		ctx.fillStyle = gradient;
+		ctx.fillRect(50, 40, 220, 100);
+		ctx.strokeStyle = "#ccc";
+		ctx.strokeRect(52, 42, 216, 96);
+
+		ctx.fillStyle = "#ac1602";
+		ctx.textAlign = "center";
+		ctx.font = "10px Helvetica";
+		ctx.fillText(title, 160, 55);
+
+		ctx.fillStyle = "white";
+		ctx.font = "8px Helvetica";
+		var lines = message.split("\n");
+		each(lines, function(line, ix) {
+			ctx.fillText(line, 160, 70 + (ix * 10));
+		});
+
+		ctx.fillStyle = "#aaa";
+		ctx.font = "5px Helvetica";
+		ctx.fillText("-- press return to continue --", 160, 135);
 	}
 
 	function drawBG() {
@@ -905,6 +898,7 @@ var View = (function() {
 		++state.frameCtr;
 		drawBG();
 		drawSprites();
+		drawClouds();
 		drawMeters();
 
 		// ctx.fillStyle = "white";
@@ -915,6 +909,13 @@ var View = (function() {
 		// ctx.fillText("vy: " + state.playerVY, 20, 180);
 		// ctx.fillText("x: " + state.playerX, 150, 170);
 		// ctx.fillText("y: " + state.playerFeetY, 150, 180);
+	}
+
+	function drawDimmer(alpha) {
+		ctx.globalAlpha = alpha;
+		ctx.fillStyle = "black";
+		ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+		ctx.globalAlpha = 1.0;
 	}
 
 	function loadTex(done) {
@@ -937,6 +938,13 @@ var View = (function() {
 		image.src = "tiles.png?x=" + Date.now();
 	}
 
+	function levelChanged() {
+		state.frameCtr = 0;
+		state.cameraX = 0;
+
+		buildClouds();
+	}
+
 	function init(theState, newCtx, done) {
 		state = theState;
 
@@ -944,13 +952,144 @@ var View = (function() {
 		ctx.webkitImageSmoothingEnabled = false;
 		ctx.scale(VIEW_SCALE, VIEW_SCALE);
 
-		state.frameCtr = 0;
-		state.cameraX = 0;
-
 		loadTex(done);
 	}
 
-	return { init: init, render: render };
+	return { init: init, levelChanged: levelChanged, render: render, drawDimmer: drawDimmer, drawTextBox: drawTextBox };
+}());
+
+
+
+// ----------------------------------------------------------------------------
+//                               _             _      
+//   __ _  __ _ _ __ ___   ___  | | ___   __ _(_) ___ 
+//  / _` |/ _` | '_ ` _ \ / _ \ | |/ _ \ / _` | |/ __|
+// | (_| | (_| | | | | | |  __/ | | (_) | (_| | | (__ 
+//  \__, |\__,_|_| |_| |_|\___| |_|\___/ \__, |_|\___|
+//  |___/                                |___/        
+// ----------------------------------------------------------------------------
+var Game = (function() {
+	var state;
+
+	function moveCamera() {
+		if ((state.player.locX - state.cameraX) > STAGE_W / 2) {
+			state.cameraX = Math.min((state.map.width * TILE_DIM) - STAGE_W, state.player.locX - (STAGE_W / 2));
+		}
+		if ((state.player.locX - state.cameraX) < STAGE_W / 2) {
+			state.cameraX = Math.max(0, state.player.locX - (STAGE_W / 2));
+		}
+	}
+
+	function checkMessages() {
+		// HERE COMES THE HARDCODE WAGON!
+		if (state.action != LEVEL_PLAY)
+			return;
+
+		if (state.levelIndex == 0) {
+			if (! state.messageA && state.player.locX > 50) {
+				state.messageA = true;
+				state.action = LEVEL_MESSAGE;
+				state.msgTitle = "Oh bollocks";
+				state.msgText  = "So, on the way back to your dark dimension\nyou wound up on some lovey-dovey world!\n\nTo proceed you must darken things up.\nWalk and jump with ARROWS and spew with SPACE,\ncover the place in darkness!";
+			}
+
+			if (! state.messageB && state.player.locX > 300) {
+				state.messageB = true;
+				state.action = LEVEL_MESSAGE;
+				state.msgTitle = "By the way...";
+				state.msgText  = "\nYou can spew at a lower angle by\nholding the DOWN arrow while holding SPACE\n\nTarnish away!";
+			}
+		}
+
+		if (state.levelIndex == 1) {
+			if (! state.messageC && state.player.locX > 50) {
+				state.messageC = true;
+				state.action = LEVEL_MESSAGE;
+				state.msgTitle = "Ewwww";
+				state.msgText  = "Just being here is bad for you\nand DON'T TOUCH the fuzzies or the HEARTS!\nKeep an eye on your DISGUST METER.\n\nYou can eliminate the fuzzies but not the hearts.\nPower of love 'n all that.";
+			}
+		}
+	}
+
+	function step(dt) {
+		// -- completion
+		state.completion = Math.min(1.0, (state.tarnishedTiles / state.exposedTiles) / 0.85); // need to cover 85% of exposed tiles to complete level
+
+		// -- filter out entities that want to be removed
+		state.entities = state.entities.filter(function(ent) {
+			return !ent.removeMe;
+		});
+
+		for (var x=0; x<state.entities.length; ++x)
+			state.entities[x].act(dt);
+
+		moveCamera();
+
+		if (state.action == LEVEL_PLAY && state.completion == 1.0 && state.keys[KEY_RETURN]) {
+			state.action = LEVEL_END;
+		}
+
+		// -- textboxes etc
+		checkMessages();
+	}
+
+	function loadLevel(index, done) {
+		state.entities = [];
+
+		state.map = MapData("level" + index);
+		state.map.load(function() {
+			// -- bg tiles
+			state.exposedTiles = state.map.layers[0].countExposedTiles();
+			state.tarnishedTiles = 0;
+			state.completion = 0;
+
+			// perishables and hearts
+			state.map.layers[1].eachTile(function(row, col, tilex) {
+				var per;
+				if (tilex == 9) { // heart
+					--state.exposedTiles; // can't corrupt floor under the hearts
+					per = HeartEntity(state, {
+						locX: col * TILE_DIM,
+						locY: ((row + 1) * TILE_DIM) - 1,
+					});
+				}
+				else {
+					per = BackgroundEntity(state, {
+						locX: col * TILE_DIM,
+						locY: ((row + 1) * TILE_DIM) - 1,
+						tilex: tilex - 1
+					});
+				}
+				state.entities.push(per);
+			});
+
+			done();
+		});
+	}
+
+	function startLevel(index, done) {
+		state.bile = 100;
+		state.disgust = 0;
+
+		loadLevel(state.levelIndex, function() {
+			// enemies
+			state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
+			state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
+
+			// player
+			state.player = PlayerEntity(state, { locX: 20, locY: 10 });
+			state.entities.push(state.player);
+
+			done();
+		});
+	}
+
+	function init(theState, done) {
+		state = theState;
+		done();
+	}
+
+	return { init: init, step: step, startLevel: startLevel };
 }());
 
 
@@ -1023,9 +1162,14 @@ var Sound = (function() {
 //                          
 // ----------------------------------------------------------------------------
 window.MakeItBlack = (function() {
+	var FADE_DURATION = 500;
+
 	var state = {
+			action: LEVEL_START,
+			fadeStart: 0,
 			t0: 0,
-			keys: {}
+			keys: {},
+			levelIndex: -1
 		},
 		active = true;
 
@@ -1037,17 +1181,60 @@ window.MakeItBlack = (function() {
 		if (dt > 50)
 			dt = 50;
 
-		if (active) {
+		if (state.action == LEVEL_LOADNEXT) {
+			++state.levelIndex;
+
+			Game.startLevel(state.levelIndex, function() {
+				state.t0 = Date.now();
+				View.levelChanged();
+
+				state.action = LEVEL_START;
+			});
+
+			state.action = LEVEL_LOADING;
+		}
+
+		if (state.action == LEVEL_START) {
+			state.action = LEVEL_FADEIN;
+			state.fadeStart = state.t0;
+		}
+		if (state.action == LEVEL_END) {
+			state.action = LEVEL_FADEOUT;
+			state.fadeStart = state.t0;
+		}
+
+		if ((state.action == LEVEL_PLAY || state.action == LEVEL_FADEOUT) && active)
 			Game.step(dt);
+
+		if (state.action != LEVEL_LOADNEXT && state.action != LEVEL_LOADING)
 			View.render();
+
+		if (state.action == LEVEL_MESSAGE) {
+			View.drawTextBox(state.msgTitle, state.msgText);
+			if (state.keys[KEY_RETURN])
+				state.action = LEVEL_PLAY;
+		}
+
+		if (state.action == LEVEL_FADEIN || state.action == LEVEL_FADEOUT) {
+			var fade = Math.min(1.0, (state.t0 - state.fadeStart) / FADE_DURATION);
+
+			if (state.action == LEVEL_FADEIN) {
+				View.drawDimmer(1.0 - fade);
+				if (fade == 1.0)
+					state.action = LEVEL_PLAY;
+			}
+			else {
+				View.drawDimmer(fade);
+				if (fade == 1.0)
+					state.action = LEVEL_LOADNEXT;
+			}
 		}
 
 		fnRequestAnimationFrame(step);
 	}
 
 	function start() {
-		// document.getElementsByClassName("overlay")[0].style.display = "none";
-		state.t0 = Date.now();
+		state.action = LEVEL_LOADNEXT;
 		step();
 	}
 
@@ -1056,13 +1243,19 @@ window.MakeItBlack = (function() {
 			var kc = e.keyCode;
 			if (! state.keys[kc]) {
 				state.keys[kc] = true;
-				Game.keyChange(kc, true);
+
+				// DEBUG
+				var kc0 = 48;
+				if (state.action == LEVEL_PLAY && (kc >= kc0 && kc <= kc0 + 4)) {
+					state.levelIndex = kc - kc0 - 1;
+					state.action = LEVEL_LOADNEXT;
+				}
+				// DEBUG
 			}
 		};
 		window.onkeyup = function(e){
 			var kc = e.keyCode;
 			state.keys[kc] = false;
-			Game.keyChange(kc, false);
 		};
 
 		window.onblur = function() { active = false };
