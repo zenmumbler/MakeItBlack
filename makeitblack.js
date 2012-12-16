@@ -122,9 +122,20 @@ function MapData(name, onLoad) {
 			tileData[(row * width) + col] = tile;
 		}
 
+		function eachTile(callback) {
+			var off = 0, exposed = 0;
+			for (var row = 0; row < height; ++row) {
+				for (var col = 0; col < width; ++col) {
+					if (tileData[off])
+						callback(row, col, tileData[off]);
+					++off;
+				}
+			}
+		}
+
 		function countExposedTiles() {
 			// simple algo, unreachable tiles with uncovered sides are still counted
-			var x = 0, y = 0, off = 0, exposed = 0;
+			var off = 0, exposed = 0;
 			for (var y = 0; y < height; ++y) {
 				for (var x = 0; x < width; ++x) {
 					if (tileData[off] > 0) {
@@ -146,8 +157,10 @@ function MapData(name, onLoad) {
 
 		return {
 			width: width, height: height,
-			rangeOnRow: rangeOnRow, tileAt: tileAt,
+			rangeOnRow: rangeOnRow,
+			tileAt: tileAt,
 			setTileAt: setTileAt,
+			eachTile: eachTile,
 			countExposedTiles: countExposedTiles
 		}
 	}
@@ -404,6 +417,32 @@ function FuzzleEntity(state, initialVals) {
 }
 
 
+function BackgroundEntity(state, initialVals) {
+	return Entity("perishable", state, initialVals, {
+		init: function(me) {
+			me.velX = me.velY = 0;
+			me.pure = true;
+		},
+
+		tileIndex: function(me) {
+			return me.tilex;
+		},
+
+		act: function(me) { },
+
+		collidedWithWall: function(me, hitCoord) { },
+		collidedWithCeiling: function(me, hitCoord) { },
+		collidedWithFloor: function(me, hitCoord) { },
+		collidedWithEntity: function(me, other) {
+			if (me.pure && other.type == "blob") {
+				me.tilex += 16;
+				me.pure = false;
+			}
+		}
+	});
+}
+
+
 function DarknessBlob(state, initialVals) {
 	var BLOB_HORIZ_SPEED = 90,
 		BLOB_VERT_SPEED = 60,
@@ -426,15 +465,15 @@ function DarknessBlob(state, initialVals) {
 			me.height = 1;
 
 			if (me.lookLeft)
-				me.velX = (0.90 * -BLOB_HORIZ_SPEED) + (Math.random() * 0.2 * BLOB_HORIZ_SPEED);
+				me.velX = (0.85 * -BLOB_HORIZ_SPEED) + (Math.random() * 0.3 * BLOB_HORIZ_SPEED);
 			else
-				me.velX = (0.90 *  BLOB_HORIZ_SPEED) + (Math.random() * 0.2 * BLOB_HORIZ_SPEED);
+				me.velX = (0.85 *  BLOB_HORIZ_SPEED) + (Math.random() * 0.3 * BLOB_HORIZ_SPEED);
 
 			me.velY = me.lowBeam ? -BLOB_VERT_SPEED_LOW : -BLOB_VERT_SPEED;
 		},
 
 		tileIndex: function(me) {
-			return 24;
+			return 32;
 		},
 
 		act: function(me) {
@@ -443,7 +482,7 @@ function DarknessBlob(state, initialVals) {
 		collidedWithWall: function(me, hitCoord) { me.removeMe = true; tarnish(hitCoord); },
 		collidedWithCeiling: function(me, hitCoord) { me.removeMe = true; tarnish(hitCoord); },
 		collidedWithFloor: function(me, hitCoord) { me.removeMe = true; tarnish(hitCoord); },
-		collidedWithEntity: function(me, other) { me.removeMe = true; tarnish(hitCoord); }
+		collidedWithEntity: function(me, other) { me.removeMe = true; }
 	});
 }
 
@@ -545,14 +584,14 @@ function PlayerEntity(state, initialVals) {
 //  |___/                                |___/        
 // ----------------------------------------------------------------------------
 var Game = (function() {
-	var state, player;
+	var state;
 
 	function moveCamera() {
-		if ((player.locX - state.cameraX) > STAGE_W / 2) {
-			state.cameraX = Math.min((state.map.width * TILE_DIM) - STAGE_W, player.locX - (STAGE_W / 2));
+		if ((state.player.locX - state.cameraX) > STAGE_W / 2) {
+			state.cameraX = Math.min((state.map.width * TILE_DIM) - STAGE_W, state.player.locX - (STAGE_W / 2));
 		}
-		if ((player.locX - state.cameraX) < STAGE_W / 2) {
-			state.cameraX = Math.max(0, player.locX - (STAGE_W / 2));
+		if ((state.player.locX - state.cameraX) < STAGE_W / 2) {
+			state.cameraX = Math.max(0, state.player.locX - (STAGE_W / 2));
 		}
 	}
 
@@ -571,28 +610,47 @@ var Game = (function() {
 	function keyChange(keyCode, pressed) {
 	}
 
-	function init(theState, done) {
-		state = theState;
-
+	function loadLevel(index, done) {
 		state.entities = [];
-		player = PlayerEntity(state, { locX: 97, locY: 135 });
-		state.entities.push(player);
-		state.player = player;
 
-		state.bile = 100;
-		state.disgust = 0;
-
-		state.map = MapData("level0");
+		state.map = MapData("level" + index);
 		state.map.load(function() {
 			state.exposedTiles = state.map.layers[0].countExposedTiles();
-			log("exposed: ", state.exposedTiles);
 			state.tarnishedTiles = 0;
 
+			// perishables
+			state.map.layers[1].eachTile(function(row, col, tilex) {
+				var per = BackgroundEntity(state, {
+					locX: col * TILE_DIM,
+					locY: ((row + 1) * TILE_DIM) - 1,
+					tilex: tilex - 1
+				 });
+				state.entities.push(per);
+			});
+
+			// enemies
 			state.entities.push(FuzzleEntity(state, { locX: 20, locY: 100 }));
 			state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
 
+			// player
+			state.player = PlayerEntity(state, { locX: 20, locY: 100 });
+			state.entities.push(state.player);
+
 			done();
 		});
+	}
+
+	function init(theState, done) {
+		state = theState;
+		state.levelIndex = 0;
+
+		loadLevel(state.levelIndex, function() {
+			state.bile = 100;
+			state.disgust = 0;
+
+			done();
+		});
+
 	}
 
 	return { init: init, step: step, keyChange: keyChange };
