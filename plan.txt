@@ -40,29 +40,24 @@ v flowers and plants
 v heart bath
 v tiles: sand, moss stone, diamond ore
 
-- cherubs
-- arrows
-- bees
-
 v layer 2 -> corruptable sprite conversion
 v sprite-sprite collision
 v player hit animation
 - fix sprite-bg collision (going right)
 v killing enemies (fade away)
 v taking damage
-- dieing
-- stuff oozing down from corrupted tiles
+	X gradual damage (this sucks)
+v dying
 
 - level0: no disgust meter, tutorial
 v level1: disgust meter, heart baths
 v level2: cherubs
-- level3: likely final level (boss?)
 - level4: all black, just walk, goat meat farm, final message
 
 v multiple level support
 	v detect level end
 		- kill all enemies (5 damage / frame)
-		- draw level clear info
+		v draw level clear info
 		- fill-corrupt entire level?
 	v transition
 	v debug jump to level
@@ -79,3 +74,12 @@ v explanation popover
 	- wharghl sounds
 	- steps
 	- bees
+
+
+If Time Permits
+---------------
+- cherubs
+- arrows
+- bees
+- stuff oozing down from corrupted tiles
+

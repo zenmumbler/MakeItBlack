@@ -82,6 +82,8 @@ var LEVEL_LOADNEXT = "loadnext",
 	LEVEL_END = "end",
 	LEVEL_FADEOUT = "fadeout";
 
+var FINAL_LEVEL = 3;
+
 var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39,
 	KEY_SPACE = 32, KEY_RETURN = 13;
 
@@ -642,6 +644,12 @@ function PlayerEntity(state, initialVals) {
 		act: function(me) {
 			var onFloor = me.isOnFloor();
 
+			if (state.timeOfDeath) {
+				// I R DED
+				me.velX = me.velY = 0;
+				return;
+			}
+
 			// -- horizontal movement, non-accelerated
 			if (state.keys[KEY_LEFT]) {
 				me.walkSpeed = -PLAYER_SPEED_SEC;
@@ -684,7 +692,7 @@ function PlayerEntity(state, initialVals) {
 			else {
 				me.glarbl = false;
 				if ((state.frameCtr & 1) == 0)
-					state.bile = Math.min(100, state.bile + 1);
+					state.bile = Math.min(100, state.bile + 1.5);
 			}
 		},
 
@@ -692,13 +700,20 @@ function PlayerEntity(state, initialVals) {
 		collidedWithCeiling: function(me) { },
 		collidedWithFloor: function(me) { },
 		collidedWithEntity: function(me, other) {
-			if (me.invulnerableUntil > state.t0)
+			if (state.timeOfDeath || (me.invulnerableUntil > state.t0))
 				return;
 
 			if (other.enemy && !other.dead) {
-				var damage = { heart: 16, fuzzle: 8 }[other.type] || 8;
+				var damage = { heart: 24, fuzzle: 12 }[other.type] || 12;
 
 				state.disgust = Math.min(100, state.disgust + damage); // <-- put in state / Game
+				if ((state.disgust == 100) && !state.timeOfDeath) {
+					state.timeOfDeath = state.t0;
+					state.deathRatio = 0;
+
+					// play death sound (static)
+					return;
+				}
 
 				var sgn = (other.locX > me.locX) ? -1 : 1;
 				me.hitSpeed = sgn * PLAYER_HIT_SPEED_BOOST;
@@ -852,10 +867,25 @@ var View = (function() {
 			var ent = state.entities[x],
 				pixWidth = ent.width * TILE_DIM,
 				pixHeight = ent.height * TILE_DIM,
-				tilex = ent.tileIndex();
+				tilex = ent.tileIndex(),
+				scale = 1.0;
 
-			if (ent.type == "player" && ent.invulnerableUntil > state.t0 && state.frameCtr & 1)
-				continue;
+			if (ent.type == "player") {
+				if (ent.invulnerableUntil > state.t0 && state.frameCtr & 1)
+					continue;
+
+				ctx.save();
+
+				// perform hack death animation
+				if (state.deathRatio) {
+					ctx.translate(Math.round(ent.locX - state.cameraX + 4), Math.round(ent.locY) - pixHeight + 1);
+					ctx.rotate(-0.25 + (Math.random() * 0.5));
+					ctx.translate(-Math.round(ent.locX - state.cameraX + 4), -(Math.round(ent.locY) - pixHeight + 1));
+					ctx.globalAlpha = 0.2 + (Math.random() * 0.7);
+					scale = 1 + (state.deathRatio * 4);
+					tilex = 51;
+				}
+			}
 
 			// -- animation sequences are spread out over a second
 			if (tilex.length)
@@ -864,33 +894,87 @@ var View = (function() {
 			if (ent.enemy)
 				ctx.globalAlpha = 0.2 + (0.8 * (ent.HP / 100));
 
-			ctx.drawImage(tiles, (tilex & 7) * 8, tilex & 0xf8, pixWidth, pixHeight, Math.round(ent.locX - state.cameraX), Math.round(ent.locY) - pixHeight + 1, pixWidth, pixHeight);
+			ctx.drawImage(tiles, (tilex & 7) * 8, tilex & 0xf8, pixWidth, pixHeight, Math.round(ent.locX - state.cameraX), Math.round(ent.locY) - pixHeight + 1, pixWidth * scale, pixHeight * scale);
 			ctx.globalAlpha = 1.0;
+
+			if (ent.type == "player")
+				ctx.restore();
 		}
 	}
 
 	function drawMeters() {
+		var showDisgust = state.levelIndex > 0;
+
 		ctx.strokeStyle = "white";
 		ctx.strokeRect(8, 8, 103, 6);
-		ctx.strokeRect(STAGE_W - 103 - 8, 8, 103, 6);
+		if (showDisgust)
+			ctx.strokeRect(STAGE_W - 103 - 8, 8, 103, 6);
 
-		ctx.fillStyle = "#444";
+		ctx.fillStyle = "#000";
 		ctx.fillRect(9.5, 9.5, state.bile, 3);
 
-		ctx.fillStyle = "#49a255";
-		ctx.fillRect(STAGE_W - 100 - 9.5, 9.5, state.disgust, 3);
+		if (showDisgust) {
+			ctx.fillStyle = "#49a255";
+			ctx.fillRect(STAGE_W - 100 - 9.5, 9.5, state.disgust, 3);
+		}
 
 		ctx.font = "6px Helvetica";
 		ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 1;
 		ctx.shadowColor = "rgba(0,0,0, 0.5)";
 
 		ctx.textAlign = "start";
-		ctx.fillStyle = "#444";
+		ctx.fillStyle = "#000";
+		ctx.shadowColor = "rgba(255,255,255, 0.5)";
 		ctx.fillText("Bile", 9, 8);
 
-		ctx.textAlign = "end";
-		ctx.fillStyle = "#49a255";
-		ctx.fillText("Disgust", STAGE_W - 9, 8);
+		if (showDisgust) {
+			ctx.shadowColor = "rgba(0,0,0, 0.5)";
+			ctx.textAlign = "end";
+			ctx.fillStyle = "#49a255";
+			ctx.fillText("Disgust", STAGE_W - 9, 8);
+		}
+
+		ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 0;
+	}
+
+	function drawLevelComplete() {
+		var SLIDE_EM = 1500;
+		var title, subtitle,
+			dtc = state.t0 - state.completionTime,
+			slideRatio = Math.min(1.0, dtc / SLIDE_EM);
+		slideRatio *= slideRatio;
+
+		if (state.levelIndex == FINAL_LEVEL) {
+			title = "All Clear";
+			subtitle = "Here's your damn goat."
+		}
+		else {
+			title = "Level Clear";
+			subtitle = ["Didn't that feel good?", "Mick Jagger is proud of you", "Everything is dead."][state.levelIndex];
+		}
+
+		ctx.shadowColor = "rgba(0,0,0, 0.5)";
+
+		ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 2;
+		ctx.font = "30px Helvetica";
+		ctx.textAlign = "center";
+		ctx.fillStyle = "white";
+		ctx.fillText(title, 160, -20 + (100 * slideRatio));
+
+		if (slideRatio == 1.0) {
+			ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 1;
+			ctx.font = "10px Helvetica";
+			ctx.fillStyle = "#49a255";
+			ctx.fillText(subtitle, 160, 100);
+		}
+
+		if ((state.levelIndex < FINAL_LEVEL) && (state.frameCtr & 32) && (slideRatio == 1.0)) {
+			ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 1;
+			ctx.font = "6px Helvetica";
+			ctx.fillStyle = "white";
+			ctx.fillText("-- press return to proceed --", 160, 180);
+		}
+
 		ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 0;
 	}
 
@@ -901,14 +985,8 @@ var View = (function() {
 		drawClouds();
 		drawMeters();
 
-		// ctx.fillStyle = "white";
-		// ctx.font = "6px Menlo";
-		// ctx.textAlign = "start";
-		// ctx.fillText("vx: " + state.player.velX, 20, 170);
-		// ctx.fillText("vx: " + state.player.hitSpeed, 20, 180);
-		// ctx.fillText("vy: " + state.playerVY, 20, 180);
-		// ctx.fillText("x: " + state.playerX, 150, 170);
-		// ctx.fillText("y: " + state.playerFeetY, 150, 180);
+		if (state.completion == 1.0)
+			drawLevelComplete();
 	}
 
 	function drawDimmer(alpha) {
@@ -934,7 +1012,7 @@ var View = (function() {
 		};
 
 		image.width = 64;
-		image.height = 64;
+		image.height = 96;
 		image.src = "tiles.png?x=" + Date.now();
 	}
 
@@ -1013,7 +1091,7 @@ var Game = (function() {
 
 	function step(dt) {
 		// -- completion
-		state.completion = Math.min(1.0, (state.tarnishedTiles / state.exposedTiles) / 0.85); // need to cover 85% of exposed tiles to complete level
+		state.completion = Math.min(1.0, (state.tarnishedTiles / state.exposedTiles) / 0.82); // need to cover 82% of exposed tiles to complete level
 
 		// -- filter out entities that want to be removed
 		state.entities = state.entities.filter(function(ent) {
@@ -1031,6 +1109,22 @@ var Game = (function() {
 
 		// -- textboxes etc
 		checkMessages();
+
+		if (state.completion == 1.0) {
+			if (! state.completionTime)
+				state.completionTime = state.t0;
+
+			// other end of level activities
+		}
+
+		if (state.timeOfDeath) {
+			state.deathRatio = Math.min(1.0, (state.t0 - state.timeOfDeath) / 2000);
+
+			if (state.deathRatio == 1.0) {
+				--state.levelIndex;
+				state.action = LEVEL_LOADNEXT;
+			}
+		}
 	}
 
 	function loadLevel(index, done) {
@@ -1042,6 +1136,7 @@ var Game = (function() {
 			state.exposedTiles = state.map.layers[0].countExposedTiles();
 			state.tarnishedTiles = 0;
 			state.completion = 0;
+			state.completionTime = 0;
 
 			// perishables and hearts
 			state.map.layers[1].eachTile(function(row, col, tilex) {
@@ -1070,11 +1165,31 @@ var Game = (function() {
 	function startLevel(index, done) {
 		state.bile = 100;
 		state.disgust = 0;
+		state.deathRatio = 0;
+		state.timeOfDeath = 0;
 
 		loadLevel(state.levelIndex, function() {
-			// enemies
-			state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
-			state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
+			switch (state.levelIndex) {
+				case 1:
+					// enemies
+					state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
+					state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
+					break;
+
+				case 2:
+					// enemies
+					state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
+					state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
+					break;
+
+				case 3:
+					// enemies
+					state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
+					state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
+					break;
+
+				default: break;
+			}
 
 			// player
 			state.player = PlayerEntity(state, { locX: 20, locY: 10 });
@@ -1246,7 +1361,7 @@ window.MakeItBlack = (function() {
 
 				// DEBUG
 				var kc0 = 48;
-				if (state.action == LEVEL_PLAY && (kc >= kc0 && kc <= kc0 + 4)) {
+				if (state.action == LEVEL_PLAY && (kc >= kc0 && kc <= kc0 + FINAL_LEVEL)) {
 					state.levelIndex = kc - kc0 - 1;
 					state.action = LEVEL_LOADNEXT;
 				}
