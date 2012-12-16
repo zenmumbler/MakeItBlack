@@ -8,7 +8,26 @@ Corruption
 	- activates things?
 
 core game mechanic
+	- make it black!
+	- whargarbl!
 
-	- platform puzzles?
-	- dark/light problems?
+- Bile meter
+	how much blobs you can spew, regenerates
+- Disgust meter
+	health bar, decreases when in contect with happiness
+
+- Sounds
+
+- Statistic on how much of the level (or surroundings? has been blackened)
+	- change color of sky and light
+
+- cherubs flying overhead firing arrows at you
+- heart baths DEADLY!
+
+- level completion:
+	% of level darkness
+	power of love barrier dispelled, can continue
+
+- clouds out of level design
+	- moving parallax layer, change color
 	
