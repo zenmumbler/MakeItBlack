@@ -35,10 +35,9 @@ core game mechanic
 
 Shit to do
 ----------
-
 - floating clouds
 v flowers and plants
-- heart bath
+v heart bath
 v tiles: sand, moss stone, diamond ore
 
 - bees
@@ -46,16 +45,23 @@ v tiles: sand, moss stone, diamond ore
 - arrows
 
 v layer 2 -> corruptable sprite conversion
-- sprite-sprite collision
-- player hit animation
-- fix fuzzle movement
+v sprite-sprite collision
+v player hit animation
+- fix sprite-bg collision (going right)
+v killing enemies (fade away)
+v taking damage
+- dieing
+- stuff oozing down from corrupted tiles
 
 - level0: no disgust meter, tutorial
-- level1: disgust meter, enemies
-- level2: bigger
+v level1: disgust meter, enemies
+v level2: bigger
 - level3: likely final level (boss?)
+- level4: all black, just walk, goat meat farm, final message
 
 - multiple level support
+	- detect level end
+		- kill all enemies (5 damage / frame)
 	- transition
 	- splash screen?
 
@@ -64,10 +70,9 @@ v layer 2 -> corruptable sprite conversion
 	- make exposed tiles black with bile, level 0
 	- fire while holding down to aim lower, level 0/1
 	- disgust meter! (level 1)
-	- end level 3
+	- beware heart baths
 
 - sound
 	- wharghl sounds
 	- steps
 	- bees
-	- 

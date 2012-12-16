@@ -123,7 +123,7 @@ function MapData(name, onLoad) {
 		}
 
 		function eachTile(callback) {
-			var off = 0, exposed = 0;
+			var off = 0;
 			for (var row = 0; row < height; ++row) {
 				for (var col = 0; col < width; ++col) {
 					if (tileData[off])
@@ -145,8 +145,8 @@ function MapData(name, onLoad) {
 							++exposed;
 						else if ((y > 0) && (tileData[off - width] == 0))
 							++exposed;
-						else if ((y < height - 1) && (tileData[off + width] == 0))
-							++exposed;
+						// else if ((y < height - 1) && (tileData[off + width] == 0))  // don't count tiles with only bottoms free
+						// 	++exposed;
 					}
 					++off;
 				}
@@ -332,9 +332,35 @@ function Entity(type, state, initialVals, delegate) {
 		}
 	}
 
+	function collidedWithEntity(other) {
+		return delegate.collidedWithEntity(intf, other);
+	}
+
+	function checkEntityCollisions() {
+		var axl = intf.locX,
+			axr = intf.locX + (intf.width * TILE_DIM),
+			ayt = intf.locY - (intf.height * TILE_DIM),
+			ayb = intf.locY;
+
+		each(state.entities, function(other) {
+			if (other.id == intf.id) return;
+
+			var bxl = other.locX,
+				bxr = other.locX + (other.width * TILE_DIM),
+				byt = other.locY - (other.height * TILE_DIM),
+				byb = other.locY;
+
+			if (axl < bxr && axr > bxl && ayt < byb && ayb > byt) {
+				delegate.collidedWithEntity(intf, other);
+				other.collidedWithEntity(intf);
+			}
+		});
+	}
+
 	function act(dt) {
 		delegate.act(intf);
 		move(dt);
+		checkEntityCollisions();
 	}
 
 	function tileIndex() {
@@ -342,6 +368,7 @@ function Entity(type, state, initialVals, delegate) {
 	}
 
 	extend(extend(intf, {
+		id: ++Entity.GlobalID,
 		type: type,
 		locX: 0, locY: 0,
 		velX: 0, velY: 0,
@@ -352,12 +379,14 @@ function Entity(type, state, initialVals, delegate) {
 		act: act,
 		tileIndex: tileIndex,
 		isOnFloor: isOnFloor,
+		collidedWithEntity: collidedWithEntity
 	}), initialVals);
 
 	delegate.init(intf);
 
 	return intf;
 }
+Entity.GlobalID = 0;
 
 
 function FuzzleEntity(state, initialVals) {
@@ -373,6 +402,8 @@ function FuzzleEntity(state, initialVals) {
 			me.action = FUZZLE_IDLE;
 			me.nextAction = 0;
 			me.movementBlocked = false;
+			me.HP = 100;
+			me.enemy = true;
 		},
 
 		tileIndex: function(me) {
@@ -380,10 +411,9 @@ function FuzzleEntity(state, initialVals) {
 		},
 
 		act: function(me) {
-			var onFloor = me.isOnFloor(),
-				blocked = false;
+			var onFloor = me.isOnFloor();
 
-			if (me.nextAction <= Date.now()) {
+			if (me.nextAction <= state.t0) {
 				if (Math.random() > 0.6) {
 					me.action = FUZZLE_WANDER;
 
@@ -398,7 +428,9 @@ function FuzzleEntity(state, initialVals) {
 				}
 				else
 					me.action = FUZZLE_IDLE;
-				me.nextAction = Date.now() + 2000 + (Math.random() * 3000);
+
+				var delay = me.action == FUZZLE_IDLE ? 500 : 2000 + (Math.random() * 3000);
+				me.nextAction = state.t0 + delay;
 			}
 
 			if (me.action == FUZZLE_WANDER) {
@@ -412,7 +444,59 @@ function FuzzleEntity(state, initialVals) {
 		collidedWithWall: function(me) { me.movementBlocked = true; },
 		collidedWithCeiling: function(me) { },
 		collidedWithFloor: function(me) { },
-		collidedWithEntity: function(me, other) { }
+		collidedWithEntity: function(me, other) {
+			if (other.type == "blob") {
+				me.HP = Math.max(0, me.HP - 4);
+				if (me.HP == 0)
+					me.removeMe = true;
+			}
+		}
+	});
+}
+
+
+function HeartEntity(state, initialVals) {
+	return Entity("heart", state, initialVals, {
+		init: function(me) {
+			me.velX = me.velY = 0;
+			me.dead = false;
+			me.enemy = true;
+			me.HP = 100;
+		},
+
+		tileIndex: function(me) {
+			return me.dead ? 24 : [8, 15];
+		},
+
+		act: function(me) {
+			if (me.dead) return;
+
+			if (state.completion == 1) {
+				if (me.floorCol == undefined) {
+					me.floorRow = Math.floor((me.locY + 2) / TILE_DIM),
+					me.floorCol = Math.floor((me.locX + 2) / TILE_DIM);
+				}
+
+				var floorTilex = state.map.layers[0].tileAt(me.floorRow, me.floorCol);
+				if (floorTilex < 16) { // normal
+					if (Math.random() > 0.98)
+						state.map.layers[0].setTileAt(me.floorRow, me.floorCol, floorTilex + 16);
+				}
+				else { // corrupted
+					if (Math.random() > 0.98)
+						me.dead = true;
+				}
+			}
+		},
+
+		collidedWithWall: function(me, hitCoord) { },
+		collidedWithCeiling: function(me, hitCoord) { },
+		collidedWithFloor: function(me, hitCoord) { },
+		collidedWithEntity: function(me, other) {
+			if (other.type == "blob") {
+				// play some sound
+			}
+		}
 	});
 }
 
@@ -428,7 +512,21 @@ function BackgroundEntity(state, initialVals) {
 			return me.tilex;
 		},
 
-		act: function(me) { },
+		act: function(me) {
+			if (me.pure) {
+				if (undefined == me.floorCol) {
+					me.floorRow = Math.floor((me.locY + 2) / TILE_DIM),
+					me.floorCol = Math.floor((me.locX + 2) / TILE_DIM);
+				}
+
+				var floorTilex = state.map.layers[0].tileAt(me.floorRow, me.floorCol);
+				if (floorTilex >= 16) // corrupted
+					if (Math.random() > 0.99) {
+						me.tilex += 16;
+						me.pure = false; // wither
+					}
+			}
+		},
 
 		collidedWithWall: function(me, hitCoord) { },
 		collidedWithCeiling: function(me, hitCoord) { },
@@ -465,11 +563,12 @@ function DarknessBlob(state, initialVals) {
 			me.height = 1;
 
 			if (me.lookLeft)
-				me.velX = (0.85 * -BLOB_HORIZ_SPEED) + (Math.random() * 0.3 * BLOB_HORIZ_SPEED);
+				me.velX = (0.75 * -BLOB_HORIZ_SPEED) + (Math.random() * 0.5 * BLOB_HORIZ_SPEED);
 			else
-				me.velX = (0.85 *  BLOB_HORIZ_SPEED) + (Math.random() * 0.3 * BLOB_HORIZ_SPEED);
+				me.velX = (0.75 *  BLOB_HORIZ_SPEED) + (Math.random() * 0.5 * BLOB_HORIZ_SPEED);
 
-			me.velY = me.lowBeam ? -BLOB_VERT_SPEED_LOW : -BLOB_VERT_SPEED;
+			var baseY = me.lowBeam ? -BLOB_VERT_SPEED_LOW : -BLOB_VERT_SPEED
+			me.velY = (0.85 * baseY) + (Math.random() * 0.3 * baseY);
 		},
 
 		tileIndex: function(me) {
@@ -482,7 +581,12 @@ function DarknessBlob(state, initialVals) {
 		collidedWithWall: function(me, hitCoord) { me.removeMe = true; tarnish(hitCoord); },
 		collidedWithCeiling: function(me, hitCoord) { me.removeMe = true; tarnish(hitCoord); },
 		collidedWithFloor: function(me, hitCoord) { me.removeMe = true; tarnish(hitCoord); },
-		collidedWithEntity: function(me, other) { me.removeMe = true; }
+		collidedWithEntity: function(me, other) {
+			if (other.type != "player" && other.type != "blob") {
+				if (other.type != "perishable" || other.pure)
+					me.removeMe = true;
+			}
+		}
 	});
 }
 
@@ -491,12 +595,16 @@ function PlayerEntity(state, initialVals) {
 	var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39, KEY_SPACE = 32;
 
 	var PLAYER_SPEED_SEC = 60,
-		PLAYER_JUMP_SPEED_SEC = 100;
+		PLAYER_JUMP_SPEED_SEC = 100,
+		PLAYER_HIT_SPEED_BOOST = 1000;
 
 	return Entity("player", state, initialVals, {
 		init: function(me) {
 			me.width = 1;
 			me.height = 2;
+			me.invulnerableUntil = 0;
+			me.walkSpeed = 0;
+			me.hitSpeed = 0;
 		},
 
 		tileIndex: function(me) {
@@ -525,15 +633,21 @@ function PlayerEntity(state, initialVals) {
 
 			// -- horizontal movement, non-accelerated
 			if (state.keys[KEY_LEFT]) {
-				me.velX = -PLAYER_SPEED_SEC;
+				me.walkSpeed = -PLAYER_SPEED_SEC;
 				me.lookLeft = true;
 			}
 			else if (state.keys[KEY_RIGHT]) {
-				me.velX = +PLAYER_SPEED_SEC;
+				me.walkSpeed = +PLAYER_SPEED_SEC;
 				me.lookLeft = false;
 			}
 			else
-				me.velX = 0;
+				me.walkSpeed = 0;
+
+			// -- combined
+			me.hitSpeed *= 0.6;
+			if (Math.abs(me.hitSpeed) < 10)
+					me.hitSpeed = 0;
+			me.velX = me.walkSpeed + me.hitSpeed;
 
 			// -- jump
 			if (onFloor && state.keys[KEY_UP])
@@ -567,8 +681,21 @@ function PlayerEntity(state, initialVals) {
 		collidedWithCeiling: function(me) { },
 		collidedWithFloor: function(me) { },
 		collidedWithEntity: function(me, other) {
-			if (other.type == "player")
-				return false;
+			if (me.invulnerableUntil > state.t0)
+				return;
+
+			if (other.enemy) {
+				var damage = { heart: 16, fuzzle: 8 }[other.type] || 8;
+
+				state.disgust = Math.min(100, state.disgust + damage); // <-- put in state / Game
+
+				var sgn = (other.locX > me.locX) ? -1 : 1;
+				me.hitSpeed = sgn * PLAYER_HIT_SPEED_BOOST;
+
+				// play sound
+
+				me.invulnerableUntil = state.t0 + 2000;
+			}
 		}
 	});
 }
@@ -596,6 +723,9 @@ var Game = (function() {
 	}
 
 	function step(dt) {
+		// -- completion
+		state.completion = Math.min(1.0, (state.tarnishedTiles / state.exposedTiles) / 0.85); // need to cover 85% of exposed tiles to complete level
+
 		// -- filter out entities that want to be removed
 		state.entities = state.entities.filter(function(ent) {
 			return !ent.removeMe;
@@ -617,23 +747,34 @@ var Game = (function() {
 		state.map.load(function() {
 			state.exposedTiles = state.map.layers[0].countExposedTiles();
 			state.tarnishedTiles = 0;
+			state.completion = 0;
 
-			// perishables
+			// perishables and hearts
 			state.map.layers[1].eachTile(function(row, col, tilex) {
-				var per = BackgroundEntity(state, {
-					locX: col * TILE_DIM,
-					locY: ((row + 1) * TILE_DIM) - 1,
-					tilex: tilex - 1
-				 });
+				var per;
+				if (tilex == 9) { // heart
+					--state.exposedTiles; // can't corrupt floor under the hearts
+					per = HeartEntity(state, {
+						locX: col * TILE_DIM,
+						locY: ((row + 1) * TILE_DIM) - 1,
+					});
+				}
+				else {
+					per = BackgroundEntity(state, {
+						locX: col * TILE_DIM,
+						locY: ((row + 1) * TILE_DIM) - 1,
+						tilex: tilex - 1
+					});
+				}
 				state.entities.push(per);
 			});
 
 			// enemies
-			state.entities.push(FuzzleEntity(state, { locX: 20, locY: 100 }));
+			state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
 			state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
 
 			// player
-			state.player = PlayerEntity(state, { locX: 20, locY: 100 });
+			state.player = PlayerEntity(state, { locX: 20, locY: 10 });
 			state.entities.push(state.player);
 
 			done();
@@ -642,7 +783,7 @@ var Game = (function() {
 
 	function init(theState, done) {
 		state = theState;
-		state.levelIndex = 0;
+		state.levelIndex = 1;
 
 		loadLevel(state.levelIndex, function() {
 			state.bile = 100;
@@ -682,16 +823,17 @@ var View = (function() {
 		var skyColorBad    = [ 67,155,248],
 			skyColorGood   = [  0, 14, 48],
 			lightColorBad  = [255,246,144],
-			lightColorGood = [  0, 8, 16],
-			sky, light,
-			completion = Math.min(1.0, (state.tarnishedTiles / state.exposedTiles) / 0.85); // need to cover 85% of exposed tiles to complete level
+			lightColorGood = [  0,  8, 16],
+			sky, light;
 
-		sky = "rgb(" + colerp(skyColorBad, skyColorGood, completion) + ")";
-		light = "rgb(" + colerp(lightColorBad, lightColorGood, completion) + ")";
+		// -- sky
+		sky = "rgb(" + colerp(skyColorBad, skyColorGood, state.completion) + ")";
+		light = "rgb(" + colerp(lightColorBad, lightColorGood, state.completion) + ")";
 
 		ctx.fillStyle = sky;
 		ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 
+		// -- COME TO THE LIGHT
 		var sunGradient = ctx.createLinearGradient(STAGE_W, 0, STAGE_W * .75, 0);
 		sunGradient.addColorStop(0.0, light);
 		sunGradient.addColorStop(1.0, sky);
@@ -699,6 +841,8 @@ var View = (function() {
 		ctx.fillStyle = sunGradient;
 		ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 
+
+		// -- BG tiles
 		for (var y = 0; y < STAGE_H/8; ++y) {
 			var tilexes = state.map.layers[0].rangeOnRow(y, Math.floor(state.cameraX / TILE_DIM), (STAGE_W/8) + 1);
 
@@ -717,11 +861,18 @@ var View = (function() {
 				pixHeight = ent.height * TILE_DIM,
 				tilex = ent.tileIndex();
 
-			if (tilex.length) {
+			if (ent.type == "player" && ent.invulnerableUntil > state.t0 && state.frameCtr & 1)
+				continue;
+
+			// -- animation sequences are spread out over a second
+			if (tilex.length)
 				tilex = tilex[Math.floor(state.frameCtr / (60 / tilex.length)) % tilex.length];
-			}
+
+			if (ent.enemy)
+				ctx.globalAlpha = 0.2 + (0.8 * (ent.HP / 100));
 
 			ctx.drawImage(tiles, (tilex & 7) * 8, tilex & 0xf8, pixWidth, pixHeight, Math.round(ent.locX - state.cameraX), Math.round(ent.locY) - pixHeight + 1, pixWidth, pixHeight);
+			ctx.globalAlpha = 1.0;
 		}
 	}
 
@@ -757,8 +908,10 @@ var View = (function() {
 		drawMeters();
 
 		// ctx.fillStyle = "white";
-		// ctx.font = "8px Menlo";
-		// ctx.fillText("vx: " + state.playerVX, 20, 170);
+		// ctx.font = "6px Menlo";
+		// ctx.textAlign = "start";
+		// ctx.fillText("vx: " + state.player.velX, 20, 170);
+		// ctx.fillText("vx: " + state.player.hitSpeed, 20, 180);
 		// ctx.fillText("vy: " + state.playerVY, 20, 180);
 		// ctx.fillText("x: " + state.playerX, 150, 170);
 		// ctx.fillText("y: " + state.playerFeetY, 150, 180);
