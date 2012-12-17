@@ -453,8 +453,8 @@ function PetEntity(state, initialVals) {
 				me.velY = -PET_JUMP_SPEED_SEC;
 			}
 
-			if (Math.random() > 0.99)
-				; // play sound
+			if (Math.random() > 0.991 && state.player.locX > 300)
+				Sound.play("pet");
 		},
 
 		collidedWithWall: function(me) { },
@@ -1370,7 +1370,8 @@ var Sound = (function() {
 				die: "die.wav", hit: "playerhit.wav",
 				jump: "jump.wav", land: "land.wav",
 				splat: "splat.wav",
-				fuzzledie: "fuzzledie2.wav"
+				fuzzledie: "fuzzledie2.wav",
+				pet: "pet.wav"
 			}, done);
 		} catch(e) {
 			if (! audio)
@@ -1408,8 +1409,8 @@ window.MakeItBlack = (function() {
 		state.t0 = t; //dt = 0.002;
 
 		// -- limit slowness to 20fps for physics reasons
-		if (dt > 50)
-			dt = 50;
+		if (dt > 0.05)
+			dt = 0.05;
 
 		if (state.action == LEVEL_LOADNEXT) {
 			++state.levelIndex;
@@ -1475,11 +1476,11 @@ window.MakeItBlack = (function() {
 				state.keys[kc] = true;
 
 				// DEBUG
-				var kc0 = 48;
-				if (state.action == LEVEL_PLAY && (kc >= kc0 && kc <= kc0 + FINAL_LEVEL)) {
-					state.levelIndex = kc - kc0 - 1;
-					state.action = LEVEL_LOADNEXT;
-				}
+				// var kc0 = 48;
+				// if (state.action == LEVEL_PLAY && (kc >= kc0 && kc <= kc0 + FINAL_LEVEL)) {
+				// 	state.levelIndex = kc - kc0 - 1;
+				// 	state.action = LEVEL_LOADNEXT;
+				// }
 				// DEBUG
 			}
 		};
@@ -1499,7 +1500,7 @@ window.MakeItBlack = (function() {
 		});
 	}
 
-	return { init: init, state: state };
+	return { init: init /*, state: state*/ };
 }());
 
 
