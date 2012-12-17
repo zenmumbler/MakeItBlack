@@ -538,8 +538,10 @@ function FuzzleEntity(state, initialVals) {
 		collidedWithEntity: function(me, other) {
 			if (other.type == "blob") {
 				me.HP = Math.max(0, me.HP - 4);
-				if (me.HP == 0)
+				if (me.HP == 0) {
 					me.removeMe = true;
+					Sound.play("fuzzledie");
+				}
 			}
 		}
 	});
@@ -646,6 +648,11 @@ function DarknessBlob(state, initialVals) {
 			layer.setTileAt(row, col, tile + 16);
 			++state.tarnishedTiles;
 		}
+
+		if (state.t0 - (state.lastSplatSound || 0) > 50) {
+			state.lastSplatSound = state.t0;
+			Sound.play("splat");
+		}
 	}
 
 	return Entity("blob", state, initialVals, {
@@ -674,8 +681,14 @@ function DarknessBlob(state, initialVals) {
 		collidedWithFloor: function(me, hitCoord) { me.removeMe = true; tarnish(hitCoord); },
 		collidedWithEntity: function(me, other) {
 			if (other.type != "player" && other.type != "blob") {
-				if (other.type != "perishable" || other.pure)
+				if (other.type != "perishable" || other.pure) {
 					me.removeMe = true;
+
+					if (state.t0 - (state.lastSplatSound || 0) > 50) {
+						state.lastSplatSound = state.t0;
+						Sound.play("splat");
+					}
+				}
 			}
 		}
 	});
@@ -745,8 +758,10 @@ function PlayerEntity(state, initialVals) {
 			me.velX = me.walkSpeed + me.hitSpeed;
 
 			// -- jump
-			if (onFloor && state.keys[KEY_UP])
+			if (onFloor && state.keys[KEY_UP]) {
 				me.velY = -PLAYER_JUMP_SPEED_SEC;
+				Sound.play("jump");
+			}
 
 			// -- spew bile
 			if (state.keys[KEY_SPACE]) {
@@ -764,6 +779,8 @@ function PlayerEntity(state, initialVals) {
 					lowBeam: low
 				}));
 				me.glarbl = true;
+
+				// Sound.play(["spew1", "spew2"][Math.random() > 0.5 ? 1 : 0]);
 			}
 			else {
 				me.glarbl = false;
@@ -774,7 +791,9 @@ function PlayerEntity(state, initialVals) {
 
 		collidedWithWall: function(me) { },
 		collidedWithCeiling: function(me) { },
-		collidedWithFloor: function(me) { },
+		collidedWithFloor: function(me) {
+			Sound.play("land");
+		},
 		collidedWithEntity: function(me, other) {
 			if (state.timeOfDeath || (me.invulnerableUntil > state.t0))
 				return;
@@ -787,14 +806,14 @@ function PlayerEntity(state, initialVals) {
 					state.timeOfDeath = state.t0;
 					state.deathRatio = 0;
 
-					// play death sound (static)
+					Sound.play("die");
 					return;
 				}
 
 				var sgn = (other.locX > me.locX) ? -1 : 1;
 				me.hitSpeed = sgn * PLAYER_HIT_SPEED_BOOST;
 
-				// play sound
+				Sound.play("hit");
 
 				me.invulnerableUntil = state.t0 + 2000;
 			}
@@ -1104,6 +1123,7 @@ var View = (function() {
 
 		ctx = newCtx;
 		ctx.webkitImageSmoothingEnabled = false;
+		ctx.mozImageSmoothingEnabled = false;
 		ctx.scale(VIEW_SCALE, VIEW_SCALE);
 
 		loadTex(done);
@@ -1346,9 +1366,15 @@ var Sound = (function() {
 
 		try {
 			audio = new clAudioContext();
-			loadSounds({  }, done);
+			loadSounds({
+				die: "die.wav", hit: "playerhit.wav",
+				jump: "jump.wav", land: "land.wav",
+				splat: "splat.wav",
+				fuzzledie: "fuzzledie2.wav"
+			}, done);
 		} catch(e) {
-			// document.getElementById("nosoundz").style.display = "block";
+			if (! audio)
+				alert("This browser does not have support for the current Web Audio API.\nPlease use Chrome or Safari to play with sound.\nMy apologies for this inconvenience.");
 			done();
 		}
 	}
