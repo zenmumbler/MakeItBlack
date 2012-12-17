@@ -17,6 +17,35 @@
 \* ========================================================================= */
 
 // ----------------------------------------------------------------------------
+//        _       _           _     
+//   __ _| | ___ | |__   __ _| |___ 
+//  / _` | |/ _ \| '_ \ / _` | / __|
+// | (_| | | (_) | |_) | (_| | \__ \
+//  \__, |_|\___/|_.__/ \__,_|_|___/
+//  |___/                           
+// ----------------------------------------------------------------------------
+var STAGE_W = 320, STAGE_H = 192,
+	TILE_DIM = 8,
+	GRAVITY_SEC = 300;
+
+// state actions
+var LEVEL_LOADNEXT = "loadnext",
+	LEVEL_LOADING = "loading",
+	LEVEL_START = "start",
+	LEVEL_FADEIN = "fadein",
+	LEVEL_PLAY = "play",
+	LEVEL_MESSAGE = "modalmessage",
+	LEVEL_END = "end",
+	LEVEL_FADEOUT = "fadeout";
+
+var FINAL_LEVEL = 3;
+
+var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39,
+	KEY_SPACE = 32, KEY_RETURN = 13;
+
+
+
+// ----------------------------------------------------------------------------
 //        _   _ _ 
 //  _   _| |_(_) |
 // | | | | __| | |
@@ -58,35 +87,6 @@ function extend(source, additions) {
 	}
 	return source;
 }
-
-
-// ----------------------------------------------------------------------------
-//        _       _           _     
-//   __ _| | ___ | |__   __ _| |___ 
-//  / _` | |/ _ \| '_ \ / _` | / __|
-// | (_| | | (_) | |_) | (_| | \__ \
-//  \__, |_|\___/|_.__/ \__,_|_|___/
-//  |___/                           
-// ----------------------------------------------------------------------------
-var STAGE_W = 320, STAGE_H = 192,
-	TILE_DIM = 8,
-	GRAVITY_SEC = 300;
-
-// state actions
-var LEVEL_LOADNEXT = "loadnext",
-	LEVEL_LOADING = "loading",
-	LEVEL_START = "start",
-	LEVEL_FADEIN = "fadein",
-	LEVEL_PLAY = "play",
-	LEVEL_MESSAGE = "modalmessage",
-	LEVEL_END = "end",
-	LEVEL_FADEOUT = "fadeout";
-
-var FINAL_LEVEL = 3;
-
-var KEY_UP = 38, KEY_DOWN = 40, KEY_LEFT = 37, KEY_RIGHT = 39,
-	KEY_SPACE = 32, KEY_RETURN = 13;
-
 
 
 // ----------------------------------------------------------------------------
@@ -404,11 +404,75 @@ function Entity(type, state, initialVals, delegate) {
 Entity.GlobalID = 0;
 
 
+function PetEntity(state, initialVals) {
+	var PET_SPEED_SEC = 15,
+		PET_JUMP_SPEED_SEC = 85,
+		PET_WANDER = 1,
+		PET_IDLE = 2;
+
+	return Entity("pet", state, initialVals, {
+		init: function(me) {
+			me.width = 2;
+			me.height = 1;
+			me.action = PET_IDLE;
+			me.nextAction = 0;
+			me.HP = 100;
+		},
+
+		tileIndex: function(me) {
+			if (me.lookLeft)
+				return [72, 74];
+			else
+				return [80, 82];
+		},
+
+		act: function(me) {
+			if (me.nextAction <= state.t0) {
+				if (Math.random() > 0.6) {
+					me.action = PET_WANDER;
+
+					if (Math.random() > 0.5) {
+						me.velX = -PET_SPEED_SEC;
+						me.lookLeft = true;
+					}
+					else {
+						me.velX = PET_SPEED_SEC;
+						me.lookLeft = false;
+					}
+				}
+				else {
+					me.action = PET_IDLE;
+					me.velX = 0;
+				}
+
+				var delay = me.action == PET_IDLE ? 500 : 1000 + (Math.random() * 2000);
+				me.nextAction = state.t0 + delay;
+			}
+
+			if (me.isOnFloor() && (Math.random() > 0.98)) {
+				me.velY = -PET_JUMP_SPEED_SEC;
+			}
+
+			if (Math.random() > 0.99)
+				; // play sound
+		},
+
+		collidedWithWall: function(me) { },
+		collidedWithCeiling: function(me) { },
+		collidedWithFloor: function(me) { },
+		collidedWithEntity: function(me, other) { }
+	});
+}
+
+
 function FuzzleEntity(state, initialVals) {
-	var FUZZLE_SPEED_SEC = 15,
+	var FUZZLE_SPEED_SEC = 20,
+		FUZZLE_ENGAGE_SPEED_SEC = 30,
 		FUZZLE_JUMP_SPEED_SEC = 85,
+		FUZZLE_ENGAGE_JUMP_SPEED_SEC = 105,
 		FUZZLE_WANDER = 1,
-		FUZZLE_IDLE = 2;
+		FUZZLE_ENGAGE = 2,
+		FUZZLE_IDLE = 3;
 
 	return Entity("fuzzle", state, initialVals, {
 		init: function(me) {
@@ -426,34 +490,46 @@ function FuzzleEntity(state, initialVals) {
 		},
 
 		act: function(me) {
-			var onFloor = me.isOnFloor();
+			var onFloor = me.isOnFloor(),
+				pdx = Math.abs(me.locX - state.player.locX),
+				pdy = Math.abs(me.locY - state.player.locY),
+				nearPlayer = Math.sqrt((pdx * pdx) + (pdy * pdy)) < 40;
 
-			if (me.nextAction <= state.t0) {
-				if (Math.random() > 0.6) {
-					me.action = FUZZLE_WANDER;
+			if (nearPlayer) {
+				me.action = FUZZLE_ENGAGE;
+				me.lookLeft = (state.player.locX < me.locX);
+			}
+			else {
+				if (me.nextAction <= state.t0) {
+					if (Math.random() > 0.6) {
+						me.action = FUZZLE_WANDER;
 
-					if (Math.random() > 0.5) {
-						me.velX = -FUZZLE_SPEED_SEC;
-						me.lookLeft = true;
+						if (Math.random() > 0.5)
+							me.lookLeft = true;
+						else
+							me.lookLeft = false;
 					}
-					else {
-						me.velX = FUZZLE_SPEED_SEC;
-						me.lookLeft = false;
-					}
+					else
+						me.action = FUZZLE_IDLE;
+
+					var delay = me.action == FUZZLE_IDLE ? 500 : 1000 + (Math.random() * 2000);
+					me.nextAction = state.t0 + delay;
 				}
-				else
-					me.action = FUZZLE_IDLE;
-
-				var delay = me.action == FUZZLE_IDLE ? 500 : 2000 + (Math.random() * 3000);
-				me.nextAction = state.t0 + delay;
 			}
 
-			if (me.action == FUZZLE_WANDER) {
+			if (me.action != FUZZLE_IDLE) {
+				if (me.action == FUZZLE_ENGAGE)
+					me.velX = me.lookLeft ? -FUZZLE_ENGAGE_SPEED_SEC : FUZZLE_ENGAGE_SPEED_SEC;
+				else
+					me.velX = me.lookLeft ? -FUZZLE_SPEED_SEC : FUZZLE_SPEED_SEC;
+
 				if (onFloor && me.movementBlocked) {
 					me.movementBlocked = false;
-					me.velY = -FUZZLE_JUMP_SPEED_SEC;
+					me.velY = me.action ? -FUZZLE_ENGAGE_JUMP_SPEED_SEC : -FUZZLE_JUMP_SPEED_SEC;
 				}
 			}
+			else
+				me.velX = 0;
 		},
 
 		collidedWithWall: function(me) { me.movementBlocked = true; },
@@ -520,7 +596,7 @@ function BackgroundEntity(state, initialVals) {
 	return Entity("perishable", state, initialVals, {
 		init: function(me) {
 			me.velX = me.velY = 0;
-			me.pure = true;
+			me.pure = me.tilex < 16;
 		},
 
 		tileIndex: function(me) {
@@ -811,18 +887,18 @@ var View = (function() {
 
 		ctx.fillStyle = "#ac1602";
 		ctx.textAlign = "center";
-		ctx.font = "10px Helvetica";
+		ctx.font = "10px Arial";
 		ctx.fillText(title, 160, 55);
 
 		ctx.fillStyle = "white";
-		ctx.font = "8px Helvetica";
+		ctx.font = "8px Arial";
 		var lines = message.split("\n");
 		each(lines, function(line, ix) {
 			ctx.fillText(line, 160, 70 + (ix * 10));
 		});
 
 		ctx.fillStyle = "#aaa";
-		ctx.font = "5px Helvetica";
+		ctx.font = "5px Arial";
 		ctx.fillText("-- press return to continue --", 160, 135);
 	}
 
@@ -903,7 +979,7 @@ var View = (function() {
 	}
 
 	function drawMeters() {
-		var showDisgust = state.levelIndex > 0;
+		var showDisgust = state.levelIndex > 0 && state.levelIndex < FINAL_LEVEL;
 
 		ctx.strokeStyle = "white";
 		ctx.strokeRect(8, 8, 103, 6);
@@ -918,7 +994,7 @@ var View = (function() {
 			ctx.fillRect(STAGE_W - 100 - 9.5, 9.5, state.disgust, 3);
 		}
 
-		ctx.font = "6px Helvetica";
+		ctx.font = "6px Arial";
 		ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 1;
 		ctx.shadowColor = "rgba(0,0,0, 0.5)";
 
@@ -950,27 +1026,27 @@ var View = (function() {
 		}
 		else {
 			title = "Level Clear";
-			subtitle = ["Didn't that feel good?", "Mick Jagger is proud of you", "Everything is dead."][state.levelIndex];
+			subtitle = ["Didn't that feel good?", "Mick Jagger is proud of you.", "Your salivary glands must be HUGE."][state.levelIndex];
 		}
 
 		ctx.shadowColor = "rgba(0,0,0, 0.5)";
 
 		ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 2;
-		ctx.font = "30px Helvetica";
+		ctx.font = "30px Arial";
 		ctx.textAlign = "center";
 		ctx.fillStyle = "white";
 		ctx.fillText(title, 160, -20 + (100 * slideRatio));
 
 		if (slideRatio == 1.0) {
 			ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 1;
-			ctx.font = "10px Helvetica";
+			ctx.font = "10px Arial";
 			ctx.fillStyle = "#49a255";
 			ctx.fillText(subtitle, 160, 100);
 		}
 
 		if ((state.levelIndex < FINAL_LEVEL) && (state.frameCtr & 32) && (slideRatio == 1.0)) {
 			ctx.shadowOffsetX = ctx.shadowOffsetY = ctx.shadowBlur = 1;
-			ctx.font = "6px Helvetica";
+			ctx.font = "6px Arial";
 			ctx.fillStyle = "white";
 			ctx.fillText("-- press return to proceed --", 160, 180);
 		}
@@ -1071,27 +1147,33 @@ var Game = (function() {
 				state.msgText  = "So, on the way back to your dark dimension\nyou wound up on some lovey-dovey world!\n\nTo proceed you must darken things up.\nWalk and jump with ARROWS and spew with SPACE,\ncover the place in darkness!";
 			}
 
-			if (! state.messageB && state.player.locX > 300) {
+			if (! state.messageB && state.player.locX > 250) {
 				state.messageB = true;
 				state.action = LEVEL_MESSAGE;
 				state.msgTitle = "By the way...";
-				state.msgText  = "\nYou can spew at a lower angle by\nholding the DOWN arrow while holding SPACE\n\nTarnish away!";
+				state.msgText  = "\nYou can SPEW at a LOWER ANGLE by\nholding the DOWN arrow while holding SPACE.\n\nTarnish away!";
 			}
 		}
 
 		if (state.levelIndex == 1) {
-			if (! state.messageC && state.player.locX > 50) {
+			if (! state.messageC && state.player.locX > 25) {
 				state.messageC = true;
 				state.action = LEVEL_MESSAGE;
 				state.msgTitle = "Ewwww";
-				state.msgText  = "Just being here is bad for you\nand DON'T TOUCH the fuzzies or the HEARTS!\nKeep an eye on your DISGUST METER.\n\nYou can eliminate the fuzzies but not the hearts.\nPower of love 'n all that.";
+				state.msgText  = "Just being here makes you sick\nso DON'T TOUCH the fuzzies or the HEARTS!\nKeep an eye on your DISGUST METER.\n\nYou can eliminate the fuzzies but not the hearts.\nPower of love 'n all that.";
 			}
 		}
 	}
 
 	function step(dt) {
 		// -- completion
-		state.completion = Math.min(1.0, (state.tarnishedTiles / state.exposedTiles) / 0.82); // need to cover 82% of exposed tiles to complete level
+		if (state.levelIndex < FINAL_LEVEL)
+			state.completion = Math.min(1.0, (state.tarnishedTiles / state.exposedTiles) / 0.82); // need to cover 82% of exposed tiles to complete level
+		else {
+			var c = Math.min(1.0, state.player.locX / 420);
+			if (c > state.completion)
+				state.completion = c;
+		}
 
 		// -- filter out entities that want to be removed
 		state.entities = state.entities.filter(function(ent) {
@@ -1103,7 +1185,7 @@ var Game = (function() {
 
 		moveCamera();
 
-		if (state.action == LEVEL_PLAY && state.completion == 1.0 && state.keys[KEY_RETURN]) {
+		if (state.action == LEVEL_PLAY && state.completion == 1.0 && state.levelIndex < FINAL_LEVEL && state.keys[KEY_RETURN]) {
 			state.action = LEVEL_END;
 		}
 
@@ -1152,7 +1234,7 @@ var Game = (function() {
 					per = BackgroundEntity(state, {
 						locX: col * TILE_DIM,
 						locY: ((row + 1) * TILE_DIM) - 1,
-						tilex: tilex - 1
+						tilex: tilex - 1,
 					});
 				}
 				state.entities.push(per);
@@ -1172,20 +1254,27 @@ var Game = (function() {
 			switch (state.levelIndex) {
 				case 1:
 					// enemies
-					state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
-					state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
+					state.entities.push(FuzzleEntity(state, { locX: 100, locY: 50 }));
+					state.entities.push(FuzzleEntity(state, { locX: 350, locY: 40 }));
+					state.entities.push(FuzzleEntity(state, { locX: 600, locY: 40 }));
+
+					state.entities.push(FuzzleEntity(state, { locX: 100, locY: 165 }));
+					state.entities.push(FuzzleEntity(state, { locX: 270, locY: 160 }));
+					state.entities.push(FuzzleEntity(state, { locX: 360, locY: 180 }));
 					break;
 
 				case 2:
 					// enemies
-					state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
-					state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
+					state.entities.push(FuzzleEntity(state, { locX: 75, locY: 110 }));
+					state.entities.push(FuzzleEntity(state, { locX: 220, locY: 130 }));
+					state.entities.push(FuzzleEntity(state, { locX: 380, locY: 100 }));
+					state.entities.push(FuzzleEntity(state, { locX: 610, locY: 60 }));
 					break;
 
-				case 3:
+
+				case FINAL_LEVEL:
 					// enemies
-					state.entities.push(FuzzleEntity(state, { locX: 50, locY: 100 }));
-					state.entities.push(FuzzleEntity(state, { locX: 220, locY: 80 }));
+					state.entities.push(PetEntity(state, { locX: 550, locY: 140 }));
 					break;
 
 				default: break;
