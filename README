@@ -10,17 +10,14 @@ Use your dark bile and turn this place into a wonderful place of darkness if you
 Full game with in-game explanation and end sequence. There is even a goat. Play time about 10-15 mins. 
 
 * Needs a modern browser! Also Firefox uses an old WebAudio API that I don't have time to support, sorry. 
-* HTML5, Canvas, WebAudio, Single Player. 
+* HTML5, Canvas, WebAudio, Platformer, Single Player. 
 
 
 This was my entry in the Ludum Dare 48 hour game making competition: http://ludumdare.com/compo/
-You have to create a game from scratch in 48 hours including code, art assets and sounds. The theme
-is given at the start of the competition, this time it was: You are the Villain.
+You have to create a game from scratch in 48 hours including code, art assets and sounds. The theme is given at the start of the competition, this time it was: You are the Villain.
 
 The goat reference was a joke that started during the competition, don't worry about it too much.
 
 -- Copyright notice --
 Even though this repo contains all source materials, this game and all of the assets remain (c) 2012 Arthur Langereis
-Look at the things, reuse some of the code (it's not the prettiest thing in the world) and if you
-do something fun with or because of it, drop me a line via Twitter http://twitter.com/zenmumbler
-or here on Github.
+Look at the things, reuse some of the code (it's not the prettiest thing in the world) and if you do something fun with or because of it, drop me a line via Twitter http://twitter.com/zenmumbler or here on Github.
