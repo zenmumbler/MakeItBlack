@@ -1483,10 +1483,12 @@ window.MakeItBlack = (function() {
 				// }
 				// DEBUG
 			}
+			e.preventDefault(); return false;
 		};
 		window.onkeyup = function(e){
 			var kc = e.keyCode;
 			state.keys[kc] = false;
+            e.preventDefault(); return false;
 		};
 
 		window.onblur = function() { active = false };
